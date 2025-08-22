@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+  import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Camera, 
-  Play, 
-  Pause, 
+  import { Badge } from "@/components/ui/badge";
+  import { 
+    Camera, 
+    Play,
+    Pause,
   Square, 
   Upload, 
-  Settings,
+    Settings,
   Wifi,
   WifiOff,
   Users,
@@ -20,15 +20,15 @@ import {
   MapPin,
   Layers,
   ZoomIn
-} from "lucide-react";
+  } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
+  import { toast } from "sonner";
 import { API_URL, WS_URL, MAPBOX_ACCESS_TOKEN } from "@/config";
 import ZoneSelectionModal from './ZoneSelectionModal';
 
 interface CameraStream {
   id: string;
-  name: string;
+    name: string;
   source: string;
   status: 'active' | 'stopped' | 'error';
   people_count: number;
@@ -54,9 +54,9 @@ interface LiveFrame {
   people_count: number;
   density_level: string;
   timestamp: string;
-}
+  }
 
-const CCTVPanel = () => {
+  const CCTVPanel = () => {
   const [cameras, setCameras] = useState<CameraStream[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -82,7 +82,7 @@ const CCTVPanel = () => {
   const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch camera status periodically
-  useEffect(() => {
+    useEffect(() => {
     const fetchCameraStatus = async () => {
       try {
         const response = await fetch(`${API_URL}/status`);
@@ -127,13 +127,13 @@ const CCTVPanel = () => {
     cameras.forEach(camera => {
       if (camera.status === 'active' && !websocketsRef.current[camera.id]) {
         connectToCamera(camera.id);
-      }
-    });
+        }
+      });
 
-    return () => {
+      return () => {
       // Cleanup WebSocket connections
       Object.values(websocketsRef.current).forEach(ws => ws.close());
-    };
+      };
   }, [cameras]);
 
   const connectToCamera = (cameraId: string) => {
@@ -361,7 +361,7 @@ const CCTVPanel = () => {
     }
   };
 
-  return (
+      return (
     <div className="space-y-6">
       {/* Camera Controls */}
       <div className="flex items-center justify-between">
@@ -412,7 +412,7 @@ const CCTVPanel = () => {
                       value={rtspForm.camera_id}
                       onChange={(e) => setRtspForm(prev => ({ ...prev, camera_id: e.target.value }))}
                     />
-                  </div>
+                        </div>
                   <div>
                     <Label htmlFor="rtsp-url">RTSP URL</Label>
                     <Input
@@ -421,7 +421,7 @@ const CCTVPanel = () => {
                       value={rtspForm.rtsp_url}
                       onChange={(e) => setRtspForm(prev => ({ ...prev, rtsp_url: e.target.value }))}
                     />
-                  </div>
+                      </div>
                   <div>
                     <Label htmlFor="rtsp-threshold">Threshold</Label>
                     <Input
@@ -431,8 +431,8 @@ const CCTVPanel = () => {
                       value={rtspForm.threshold}
                       onChange={(e) => setRtspForm(prev => ({ ...prev, threshold: parseInt(e.target.value) || 20 }))}
                     />
-                  </div>
-                </div>
+                      </div>
+                      </div>
                 <div className="flex gap-2">
                   <Button 
                     onClick={startRTSPMonitoring}
@@ -445,14 +445,14 @@ const CCTVPanel = () => {
                       <Play className="w-4 h-4 mr-2" />
                     )}
                     {isConnecting ? 'Starting...' : 'Start Monitoring'}
-                  </Button>
-                  <Button 
+                          </Button>
+                          <Button 
                     variant="outline"
                     onClick={() => setShowRtspForm(false)}
-                  >
+                          >
                     Cancel
-                  </Button>
-                </div>
+                          </Button>
+                        </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -482,7 +482,7 @@ const CCTVPanel = () => {
                       value={videoForm.camera_id}
                       onChange={(e) => setVideoForm(prev => ({ ...prev, camera_id: e.target.value }))}
                     />
-                  </div>
+                      </div>
                   <div>
                     <Label htmlFor="video-threshold">Threshold</Label>
                     <Input
@@ -492,8 +492,8 @@ const CCTVPanel = () => {
                       value={videoForm.threshold}
                       onChange={(e) => setVideoForm(prev => ({ ...prev, threshold: parseInt(e.target.value) || 20 }))}
                     />
-                  </div>
-                </div>
+                      </div>
+                    </div>
                 <div>
                   <Label htmlFor="video-file">Video File</Label>
                   <Input
@@ -595,12 +595,12 @@ const CCTVPanel = () => {
                       <span className="font-bold">{camera.people_count}</span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Threshold:</span>
                     <span className="font-bold">{camera.threshold}</span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Density:</span>
                     <Badge 
@@ -678,15 +678,15 @@ const CCTVPanel = () => {
             >
               <Wifi className="w-4 h-4 mr-2" />
               Add RTSP Camera
-            </Button>
+          </Button>
             <Button
               onClick={() => setShowVideoUpload(true)}
               variant="outline"
             >
               <Upload className="w-4 h-4 mr-2" />
               Upload Video
-            </Button>
-          </div>
+          </Button>
+        </div>
         </motion.div>
       )}
 

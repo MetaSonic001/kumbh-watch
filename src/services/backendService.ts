@@ -66,60 +66,69 @@ class BackendService {
     this.baseUrl = API_URL;
   }
 
+  // Helper method for better error handling
+  private async makeRequest(url: string, options?: RequestInit): Promise<any> {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+        ...options,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      } else {
+        const text = await response.text();
+        console.error('Non-JSON response received:', text.substring(0, 200));
+        throw new Error('Server returned non-JSON response. Check if the API endpoint exists and the server is running correctly.');
+      }
+    } catch (error) {
+      console.error(`Request failed for ${url}:`, error);
+      throw error;
+    }
+  }
+
   // Zone Management
   async createZone(zoneData: Omit<BackendZone, 'id' | 'created_at' | 'current_occupancy' | 'status'>): Promise<BackendZone> {
-    const response = await fetch(`${this.baseUrl}/zones`, {
+    const response = await this.makeRequest(`${this.baseUrl}/zones`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         ...zoneData,
         status: 'active'
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to create zone: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async getZones(): Promise<BackendZone[]> {
-    const response = await fetch(`${this.baseUrl}/zones`);
+    const response = await this.makeRequest(`${this.baseUrl}/zones`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch zones: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async updateZone(zoneId: string, zoneData: Partial<BackendZone>): Promise<BackendZone> {
-    const response = await fetch(`${this.baseUrl}/zones/${zoneId}`, {
+    const response = await this.makeRequest(`${this.baseUrl}/zones/${zoneId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(zoneData),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to update zone: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async deleteZone(zoneId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/zones/${zoneId}`, {
+    await this.makeRequest(`${this.baseUrl}/zones/${zoneId}`, {
       method: 'DELETE',
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete zone: ${response.statusText}`);
-    }
   }
 
   // Camera Management
@@ -129,116 +138,71 @@ class BackendService {
     threshold: number;
     zone_id: string;
   }): Promise<BackendCamera> {
-    const response = await fetch(`${this.baseUrl}/monitor/rtsp`, {
+    const response = await this.makeRequest(`${this.baseUrl}/monitor/rtsp`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(cameraData),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to start camera monitoring: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async getCameras(): Promise<BackendCamera[]> {
-    const response = await fetch(`${this.baseUrl}/cameras`);
+    const response = await this.makeRequest(`${this.baseUrl}/cameras`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch cameras: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async stopCamera(cameraId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/camera/${cameraId}/stop`, {
+    await this.makeRequest(`${this.baseUrl}/camera/${cameraId}/stop`, {
       method: 'POST',
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to stop camera: ${response.statusText}`);
-    }
   }
 
   // Team Management
   async createTeam(teamData: Omit<BackendTeam, 'id' | 'created_at' | 'status'>): Promise<BackendTeam> {
-    const response = await fetch(`${this.baseUrl}/teams`, {
+    const response = await this.makeRequest(`${this.baseUrl}/teams`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         ...teamData,
         status: 'active'
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to create team: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async getTeams(): Promise<BackendTeam[]> {
-    const response = await fetch(`${this.baseUrl}/teams`);
+    const response = await this.makeRequest(`${this.baseUrl}/teams`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch teams: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async updateTeam(teamId: string, teamData: Partial<BackendTeam>): Promise<BackendTeam> {
-    const response = await fetch(`${this.baseUrl}/teams/${teamId}`, {
+    const response = await this.makeRequest(`${this.baseUrl}/teams/${teamId}`, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(teamData),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to update team: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async deleteTeam(teamId: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/teams/${teamId}`, {
+    await this.makeRequest(`${this.baseUrl}/teams/${teamId}`, {
       method: 'DELETE',
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete team: ${response.statusText}`);
-    }
   }
 
   // Crowd Flow Analysis
   async getCrowdFlowData(): Promise<CrowdFlowData[]> {
-    const response = await fetch(`${this.baseUrl}/crowd-flow`);
+    const response = await this.makeRequest(`${this.baseUrl}/crowd-flow`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch crowd flow data: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async getZoneCrowdFlow(zoneId: string): Promise<CrowdFlowData> {
-    const response = await fetch(`${this.baseUrl}/zones/${zoneId}/crowd-flow`);
+    const response = await this.makeRequest(`${this.baseUrl}/zones/${zoneId}/crowd-flow`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch zone crowd flow: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   // Re-routing Suggestions
@@ -247,43 +211,28 @@ class BackendService {
       ? `${this.baseUrl}/re-routing-suggestions?zone_id=${zoneId}`
       : `${this.baseUrl}/re-routing-suggestions`;
     
-    const response = await fetch(url);
+    const response = await this.makeRequest(url);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch re-routing suggestions: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   async generateReRoutingSuggestion(fromZoneId: string, toZoneId: string): Promise<ReRoutingSuggestion> {
-    const response = await fetch(`${this.baseUrl}/re-routing-suggestions/generate`, {
+    const response = await this.makeRequest(`${this.baseUrl}/re-routing-suggestions/generate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         from_zone_id: fromZoneId,
         to_zone_id: toZoneId
       }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to generate re-routing suggestion: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   // System Status
   async getSystemStatus(): Promise<any> {
-    const response = await fetch(`${this.baseUrl}/status`);
+    const response = await this.makeRequest(`${this.baseUrl}/status`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch system status: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 
   // Emergency Alerts
@@ -294,17 +243,10 @@ class BackendService {
     priority: string;
     zone_id?: string;
   }): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/emergency`, {
+    await this.makeRequest(`${this.baseUrl}/emergency`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify(alertData),
     });
-
-    if (!response.ok) {
-      throw new Error(`Failed to send emergency alert: ${response.statusText}`);
-    }
   }
 
   // Intelligent Re-routing Logic
@@ -400,13 +342,9 @@ class BackendService {
 
   // Add new methods for live map integration
   async getZonesWithHeatmap(): Promise<any[]> {
-    const response = await fetch(`${this.baseUrl}/zones/heatmap`);
+    const response = await this.makeRequest(`${this.baseUrl}/zones/heatmap`);
     
-    if (!response.ok) {
-      throw new Error(`Failed to fetch zones with heatmap: ${response.statusText}`);
-    }
-
-    return response.json();
+    return response;
   }
 }
 

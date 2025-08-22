@@ -307,7 +307,7 @@ class FrameProcessor:
             )
         else:
             self.heatmap_generator = None
-    
+        
     def start(self):
         """Start the frame processing in a separate thread"""
         if self.is_running:
@@ -576,18 +576,18 @@ class FrameProcessor:
             
             # Check for threshold breach alert
             if analysis.people_count > self.threshold:
-                threshold_alert = {
-                    "type": "THRESHOLD_BREACH",
-                    "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
-                    "camera_id": self.camera_id,
-                    "severity": "HIGH" if analysis.people_count > self.threshold * 1.2 else "MEDIUM",
-                    "message": f"People count ({analysis.people_count}) exceeds threshold ({self.threshold})",
-                    "people_count": analysis.people_count,
-                    "threshold": self.threshold,
-                    "density_level": analysis.density_level,
-                    "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
-                }
-                
+                    threshold_alert = {
+                        "type": "THRESHOLD_BREACH",
+                        "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
+                        "camera_id": self.camera_id,
+                        "severity": "HIGH" if analysis.people_count > self.threshold * 1.2 else "MEDIUM",
+                        "message": f"People count ({analysis.people_count}) exceeds threshold ({self.threshold})",
+                        "people_count": analysis.people_count,
+                        "threshold": self.threshold,
+                        "density_level": analysis.density_level,
+                        "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
+                    }
+                    
                 # Use improved alert deduplication for threshold breaches
                 content_hash = _create_content_hash(threshold_alert)
                 if _should_send_alert("THRESHOLD_BREACH", self.camera_id, content_hash, 10.0):  # 10 second debounce for threshold alerts
@@ -597,18 +597,18 @@ class FrameProcessor:
         
         # Send anomaly alerts with improved deduplication
         for anomaly in analysis.anomalies:
-            anomaly_alert = {
-                "type": "ANOMALY_ALERT",
-                "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
-                "camera_id": self.camera_id,
-                "anomaly_type": anomaly['type'],
-                "severity": anomaly['severity'],
-                "message": anomaly['message'],
-                "location": anomaly['location'],
-                "confidence": anomaly.get('confidence', 0.0),
-                "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
-            }
-            
+                anomaly_alert = {
+                    "type": "ANOMALY_ALERT",
+                    "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
+                    "camera_id": self.camera_id,
+                    "anomaly_type": anomaly['type'],
+                    "severity": anomaly['severity'],
+                    "message": anomaly['message'],
+                    "location": anomaly['location'],
+                    "confidence": anomaly.get('confidence', 0.0),
+                    "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
+                }
+                
             # Use improved alert deduplication for anomalies
             content_hash = _create_content_hash(anomaly_alert)
             if _should_send_alert("ANOMALY_ALERT", self.camera_id, content_hash, 15.0):  # 15 second debounce for anomalies
@@ -1534,6 +1534,72 @@ async def get_zones_with_heatmap():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch zones with heatmap: {str(e)}")
 
+# Zone Management Routes (Missing - Add these)
+@app.get("/zones")
+async def get_zones():
+    """Get all zones"""
+    try:
+        if not state.zones:
+            return []
+        return list(state.zones.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch zones: {str(e)}")
+
+@app.get("/zones/{zone_id}")
+async def get_zone(zone_id: str):
+    """Get a specific zone"""
+    try:
+        if zone_id not in state.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        return state.zones[zone_id]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch zone: {str(e)}")
+
+@app.put("/zones/{zone_id}")
+async def update_zone(zone_id: str, zone_data: dict):
+    """Update a zone"""
+    try:
+        if zone_id not in state.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
+        # Update zone data
+        for key, value in zone_data.items():
+            if key in state.zones[zone_id]:
+                state.zones[zone_id][key] = value
+        
+        # Update crowd flow data if capacity changed
+        if "capacity" in zone_data:
+            zone = state.zones[zone_id]
+            if zone_id in state.crowd_flow_data:
+                state.crowd_flow_data[zone_id]["capacity"] = zone["capacity"]
+                state.crowd_flow_data[zone_id]["occupancy_percentage"] = (
+                    zone["current_occupancy"] / zone["capacity"] * 100
+                )
+        
+        return state.zones[zone_id]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update zone: {str(e)}")
+
+@app.delete("/zones/{zone_id}")
+async def delete_zone(zone_id: str):
+    """Delete a zone"""
+    try:
+        if zone_id not in state.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
+        # Remove zone and related data
+        del state.zones[zone_id]
+        if zone_id in state.crowd_flow_data:
+            del state.crowd_flow_data[zone_id]
+        if zone_id in state.re_routing_cache:
+            del state.re_routing_cache[zone_id]
+        
+        return {"status": "success", "message": f"Zone {zone_id} deleted"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete zone: {str(e)}")
+
 # Team Management Routes
 @app.post("/teams")
 async def create_team(team_data: dict):
@@ -1605,7 +1671,7 @@ async def delete_team(team_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete team: {str(e)}")
 
-# Crowd Flow Analysis Routes
+# Crowd Flow Analysis Routes (Missing - Add these)
 @app.get("/crowd-flow")
 async def get_crowd_flow_data():
     """Get crowd flow data for all zones"""
@@ -1626,7 +1692,7 @@ async def get_zone_crowd_flow(zone_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch zone crowd flow: {str(e)}")
 
-# Re-routing Suggestions Routes
+# Re-routing Suggestions Routes (Missing - Add these)
 @app.get("/re-routing-suggestions")
 async def get_re_routing_suggestions(zone_id: str = Query(None, description="Zone ID to get suggestions for")):
     """Get re-routing suggestions"""
@@ -1671,7 +1737,7 @@ async def generate_re_routing_suggestion(data: ReRoutingRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate re-routing suggestion: {str(e)}")
 
-# Camera Management Routes
+# Camera Management Routes (Missing - Add these)
 @app.get("/cameras")
 async def get_cameras():
     """Get all cameras with zone information"""
