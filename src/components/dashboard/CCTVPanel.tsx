@@ -16,11 +16,15 @@ import {
   Users,
   AlertTriangle,
   Activity,
-  RefreshCw
+  RefreshCw,
+  MapPin,
+  Layers,
+  ZoomIn
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { API_URL, WS_URL } from "@/config";
+import { API_URL, WS_URL, MAPBOX_ACCESS_TOKEN } from "@/config";
+import ZoneSelectionModal from './ZoneSelectionModal';
 
 interface CameraStream {
   id: string;
@@ -33,6 +37,8 @@ interface CameraStream {
   last_frame?: string;
   last_update: string;
   is_live: boolean;
+  zone_id?: string;
+  zone_name?: string;
 }
 
 interface DetectionBox {
@@ -66,6 +72,11 @@ const CCTVPanel = () => {
     camera_id: '',
     threshold: 20
   });
+  const [showZoneSelection, setShowZoneSelection] = useState(false);
+  const [pendingCameraData, setPendingCameraData] = useState<{
+    type: 'rtsp' | 'video';
+    data: any;
+  } | null>(null);
 
   const websocketsRef = useRef<{ [cameraId: string]: WebSocket }>({});
   const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -169,57 +180,126 @@ const CCTVPanel = () => {
     };
   };
 
+  const handleZoneSelect = async (zoneId: string, zoneName: string) => {
+    if (!pendingCameraData) return;
+    
+    try {
+      setIsConnecting(true);
+      
+      if (pendingCameraData.type === 'rtsp') {
+        // Start RTSP monitoring with zone
+        const response = await fetch(`${API_URL}/monitor/rtsp?${new URLSearchParams({
+          camera_id: pendingCameraData.data.camera_id,
+          rtsp_url: pendingCameraData.data.rtsp_url,
+          threshold: pendingCameraData.data.threshold.toString(),
+          zone_id: zoneId
+        })}`, { method: 'POST' });
+
+        if (response.ok) {
+          const result = await response.json();
+          toast.success(`Started monitoring camera ${pendingCameraData.data.camera_id} in zone "${zoneName}"`);
+          
+          // Add the new camera to the local state
+          const newCamera: CameraStream = {
+            id: pendingCameraData.data.camera_id,
+            name: `Camera ${pendingCameraData.data.camera_id}`,
+            source: pendingCameraData.data.rtsp_url,
+            status: 'active',
+            people_count: 0,
+            threshold: pendingCameraData.data.threshold,
+            density_level: 'NONE',
+            last_update: new Date().toISOString(),
+            is_live: true,
+            zone_id: zoneId,
+            zone_name: zoneName
+          };
+          
+          setCameras(prev => [...prev, newCamera]);
+          
+          // Reset form
+          setShowRtspForm(false);
+          setRtspForm({ camera_id: '', rtsp_url: '', threshold: 20 });
+          
+          // Connect to the new camera's WebSocket
+          setTimeout(() => {
+            connectToCamera(pendingCameraData.data.camera_id);
+          }, 500);
+          
+        } else {
+          const error = await response.json();
+          toast.error(`Failed to start monitoring: ${error.detail}`);
+        }
+      } else {
+        // Process video with zone
+        const formData = new FormData();
+        formData.append('file', pendingCameraData.data.file);
+        
+        const response = await fetch(`${API_URL}/process/video?${new URLSearchParams({
+          camera_id: pendingCameraData.data.camera_id,
+          threshold: pendingCameraData.data.threshold.toString(),
+          zone_id: zoneId
+        })}`, { 
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          toast.success(`Started processing video for camera ${pendingCameraData.data.camera_id} in zone "${zoneName}"`);
+          
+          // Add the new camera to the local state
+          const newCamera: CameraStream = {
+            id: pendingCameraData.data.camera_id,
+            name: `Camera ${pendingCameraData.data.camera_id}`,
+            source: `video_file_${pendingCameraData.data.file.name}`,
+            status: 'active',
+            people_count: 0,
+            threshold: pendingCameraData.data.threshold,
+            density_level: 'NONE',
+            last_update: new Date().toISOString(),
+            is_live: true,
+            zone_id: zoneId,
+            zone_name: zoneName
+          };
+          
+          setCameras(prev => [...prev, newCamera]);
+          
+          // Reset form
+          setShowVideoUpload(false);
+          setVideoFile(null);
+          setVideoForm({ camera_id: '', threshold: 20 });
+          
+          // Connect to the new camera's WebSocket
+          setTimeout(() => {
+            connectToCamera(pendingCameraData.data.camera_id);
+          }, 500);
+          
+        } else {
+          const error = await response.json();
+          toast.error(`Failed to process video: ${error.detail}`);
+        }
+      }
+      
+    } catch (error) {
+      toast.error('Failed to process request');
+    } finally {
+      setIsConnecting(false);
+      setPendingCameraData(null);
+    }
+  };
+
   const startRTSPMonitoring = async () => {
     if (!rtspForm.camera_id || !rtspForm.rtsp_url) {
       toast.error('Please fill in all fields');
       return;
     }
 
-    setIsConnecting(true);
-    try {
-      const response = await fetch(`${API_URL}/monitor/rtsp?${new URLSearchParams({
-        camera_id: rtspForm.camera_id,
-        rtsp_url: rtspForm.rtsp_url,
-        threshold: rtspForm.threshold.toString()
-      })}`, { method: 'POST' });
-
-      if (response.ok) {
-        const result = await response.json();
-        toast.success(`Started monitoring camera ${rtspForm.camera_id}`);
-        
-        // Add the new camera to the local state immediately
-        const newCamera: CameraStream = {
-          id: rtspForm.camera_id,
-          name: `Camera ${rtspForm.camera_id}`,
-          source: rtspForm.rtsp_url,
-          status: 'active',
-          people_count: 0,
-          threshold: rtspForm.threshold,
-          density_level: 'NONE',
-          last_update: new Date().toISOString(),
-          is_live: true
-        };
-        
-        setCameras(prev => [...prev, newCamera]);
-        
-        // Reset form
-        setShowRtspForm(false);
-        setRtspForm({ camera_id: '', rtsp_url: '', threshold: 20 });
-        
-        // Connect to the new camera's WebSocket
-        setTimeout(() => {
-          connectToCamera(rtspForm.camera_id);
-        }, 500);
-        
-      } else {
-        const error = await response.json();
-        toast.error(`Failed to start monitoring: ${error.detail}`);
-      }
-    } catch (error) {
-      toast.error('Failed to connect to backend');
-    } finally {
-      setIsConnecting(false);
-    }
+    // Show zone selection instead of directly starting
+    setPendingCameraData({
+      type: 'rtsp',
+      data: { ...rtspForm }
+    });
+    setShowZoneSelection(true);
   };
 
   const uploadVideo = async () => {
@@ -228,57 +308,12 @@ const CCTVPanel = () => {
       return;
     }
 
-    setIsConnecting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', videoFile);
-      
-      const response = await fetch(`${API_URL}/process/video?${new URLSearchParams({
-        camera_id: videoForm.camera_id,
-        threshold: videoForm.threshold.toString()
-      })}`, { 
-        method: 'POST',
-        body: formData
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        toast.success(`Started processing video for camera ${videoForm.camera_id}`);
-        
-        // Add the new camera to the local state immediately
-        const newCamera: CameraStream = {
-          id: videoForm.camera_id,
-          name: `Camera ${videoForm.camera_id}`,
-          source: `video_file_${videoFile.name}`,
-          status: 'active',
-          people_count: 0,
-          threshold: videoForm.threshold,
-          density_level: 'NONE',
-          last_update: new Date().toISOString(),
-          is_live: true
-        };
-        
-        setCameras(prev => [...prev, newCamera]);
-        
-        // Reset form
-        setShowVideoUpload(false);
-        setVideoFile(null);
-        setVideoForm({ camera_id: '', threshold: 20 });
-        
-        // Connect to the new camera's WebSocket
-        setTimeout(() => {
-          connectToCamera(videoForm.camera_id);
-        }, 500);
-        
-      } else {
-        const error = await response.json();
-        toast.error(`Failed to process video: ${error.detail}`);
-      }
-    } catch (error) {
-      toast.error('Failed to upload video');
-    } finally {
-      setIsConnecting(false);
-    }
+    // Show zone selection instead of directly uploading
+    setPendingCameraData({
+      type: 'video',
+      data: { ...videoForm, file: videoFile }
+    });
+    setShowZoneSelection(true);
   };
 
   const stopCamera = async (cameraId: string) => {
@@ -654,6 +689,17 @@ const CCTVPanel = () => {
           </div>
         </motion.div>
       )}
+
+      {/* Zone Selection Modal */}
+      <ZoneSelectionModal
+        isOpen={showZoneSelection}
+        onClose={() => {
+          setShowZoneSelection(false);
+          setPendingCameraData(null);
+        }}
+        onZoneSelect={handleZoneSelect}
+        cameraType={pendingCameraData?.type || 'rtsp'}
+      />
     </div>
   );
 };
