@@ -69,31 +69,132 @@ class BackendService {
   // Helper method for better error handling
   private async makeRequest(url: string, options?: RequestInit): Promise<any> {
     try {
+      console.log(`🌐 Making request to: ${url}`);
+      
       const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
           ...options?.headers,
         },
+        mode: 'cors',
+        credentials: 'omit',
         ...options,
       });
+
+      console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+      console.log(`📋 Response headers:`, Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`HTTP ${response.status}: ${errorText}`);
+        
+        // Handle ngrok-specific errors
+        if (errorText.includes('ngrok') || errorText.includes('<!DOCTYPE html>')) {
+          throw new Error(`Ngrok tunnel issue: Received HTML instead of JSON. Status: ${response.status}`);
+        }
+        
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const contentType = response.headers.get('content-type');
+      console.log(`📋 Content-Type: ${contentType}`);
+      
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        const result = await response.json();
+        console.log(`✅ JSON response received:`, result);
+        return result;
       } else {
         const text = await response.text();
-        console.error('Non-JSON response received:', text.substring(0, 200));
+        console.error('❌ Non-JSON response received:', text.substring(0, 500));
+        
+        // Check if it's an ngrok error page
+        if (text.includes('ngrok') || text.includes('<!DOCTYPE html>')) {
+          throw new Error('Ngrok tunnel issue: Received HTML error page instead of API response. The tunnel may be expired or misconfigured.');
+        }
+        
         throw new Error('Server returned non-JSON response. Check if the API endpoint exists and the server is running correctly.');
       }
     } catch (error) {
-      console.error(`Request failed for ${url}:`, error);
+      console.error(`❌ Request failed for ${url}:`, error);
+      
+      // Provide more helpful error messages
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network error: Cannot connect to the backend. Check if the ngrok tunnel is active and accessible.');
+      }
+      
       throw error;
+    }
+  }
+
+  // Test connection to backend
+  async testConnection(): Promise<{ status: string; message: string; details?: any }> {
+    try {
+      console.log('🧪 Testing backend connection...');
+      
+      // Test basic endpoint
+      const response = await this.makeRequest(`${this.baseUrl}/`);
+      
+      return {
+        status: 'success',
+        message: 'Backend connection successful',
+        details: {
+          version: response.version,
+          endpoints: Object.keys(response.endpoints),
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+    } catch (error) {
+      console.error('❌ Backend connection test failed:', error);
+      
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: {
+          url: this.baseUrl,
+          timestamp: new Date().toISOString(),
+          error: error
+        }
+      };
+    }
+  }
+
+  // Test zones endpoint specifically
+  async testZonesEndpoint(): Promise<{ status: string; message: string; details?: any }> {
+    try {
+      console.log('🧪 Testing zones endpoint specifically...');
+      
+      // Test zones endpoint
+      const response = await this.makeRequest(`${this.baseUrl}/zones/heatmap`);
+      
+      return {
+        status: 'success',
+        message: 'Zones endpoint working',
+        details: {
+          zones_count: response.length,
+          sample_zone: response[0] ? {
+            id: response[0].id,
+            name: response[0].name,
+            type: response[0].type
+          } : null,
+          timestamp: new Date().toISOString()
+        }
+      };
+      
+    } catch (error) {
+      console.error('❌ Zones endpoint test failed:', error);
+      
+      return {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: {
+          url: `${this.baseUrl}/zones/heatmap`,
+          timestamp: new Date().toISOString(),
+          error: error
+        }
+      };
     }
   }
 

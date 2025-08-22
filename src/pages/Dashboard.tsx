@@ -24,6 +24,7 @@ import QuickActions from "@/components/dashboard/QuickActions";
 import StatsCards from "@/components/dashboard/StatsCards";
 import CameraManagement from "@/components/dashboard/CameraManagement";
 import { API_URL } from "@/config";
+import backendService from "@/services/backendService";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
@@ -54,6 +55,48 @@ const Dashboard = () => {
     } catch (error) {
       setIsConnected(false);
       console.error('Backend connection failed:', error);
+    }
+  };
+
+  const testBackendConnection = async () => {
+    try {
+      const result = await backendService.testConnection();
+      console.log('🔍 Connection test result:', result);
+      
+      if (result.status === 'success') {
+        toast.success('Backend connection test successful!', {
+          description: `Version: ${result.details.version}`
+        });
+      } else {
+        toast.error('Backend connection test failed', {
+          description: result.message
+        });
+      }
+    } catch (error) {
+      toast.error('Connection test failed', {
+        description: 'Check console for details'
+      });
+    }
+  };
+
+  const testZonesEndpoint = async () => {
+    try {
+      const result = await backendService.testZonesEndpoint();
+      console.log('🔍 Zones endpoint test result:', result);
+      
+      if (result.status === 'success') {
+        toast.success('Zones endpoint test successful!', {
+          description: `Found ${result.details.zones_count} zones`
+        });
+      } else {
+        toast.error('Zones endpoint test failed', {
+          description: result.message
+        });
+      }
+    } catch (error) {
+      toast.error('Zones endpoint test failed', {
+        description: 'Check console for details'
+      });
     }
   };
 
@@ -132,6 +175,22 @@ const Dashboard = () => {
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isConnected ? '' : 'animate-spin'}`} />
             {isConnected ? 'Connected' : 'Reconnect'}
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={testBackendConnection}
+          >
+            🧪 Test Connection
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={testZonesEndpoint}
+          >
+            🗺️ Test Zones
           </Button>
         </motion.div>
 

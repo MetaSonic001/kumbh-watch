@@ -79,11 +79,25 @@ const ZoneSelectionModal: React.FC<ZoneSelectionModalProps> = ({
 
   const loadZones = async () => {
     try {
+      console.log('🔄 Loading zones from backend...');
       const zonesData = await backendService.getZonesWithHeatmap();
+      console.log('✅ Zones loaded successfully:', zonesData);
       setZones(zonesData);
     } catch (error) {
-      console.error('Failed to load zones:', error);
-      toast.error('Failed to load zones');
+      console.error('❌ Failed to load zones:', error);
+      
+      // Try to get more details about the error
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        });
+      }
+      
+      toast.error('Failed to load zones', {
+        description: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 
