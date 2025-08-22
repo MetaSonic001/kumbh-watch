@@ -53,6 +53,8 @@ const ZoneSelectionModal: React.FC<ZoneSelectionModalProps> = ({
   const [zones, setZones] = useState<Zone[]>([]);
   const [selectedZone, setSelectedZone] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   
   // New zone creation state
   const [newZone, setNewZone] = useState({
@@ -88,48 +90,100 @@ const ZoneSelectionModal: React.FC<ZoneSelectionModalProps> = ({
   // Initialize map for coordinate selection
   useEffect(() => {
     if (activeTab === 'create' && mapContainerRef.current && !mapInstance.current) {
-      mapInstance.current = new mapboxgl.Map({
-        container: mapContainerRef.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
-        center: [newZone.coordinates.lng, newZone.coordinates.lat],
-        zoom: 13
-      });
+      console.log('Initializing map for coordinate selection...');
+      setMapLoading(true);
+      setMapError(null);
+      
+      // Add a small delay to ensure the container is fully rendered
+      const timer = setTimeout(() => {
+        try {
+          if (!mapContainerRef.current) {
+            console.error('Map container not available');
+            setMapError('Map container not available');
+            setMapLoading(false);
+            return;
+          }
 
-      // Add navigation controls
-      mapInstance.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+          mapInstance.current = new mapboxgl.Map({
+            container: mapContainerRef.current,
+            style: 'mapbox://styles/mapbox/streets-v12',
+            center: [newZone.coordinates.lng, newZone.coordinates.lat],
+            zoom: 13
+          });
 
-      // Add click handler to set coordinates
-      mapInstance.current.on('click', (e) => {
-        const { lng, lat } = e.lngLat;
-        setNewZone(prev => ({
-          ...prev,
-          coordinates: { lng, lat }
-        }));
+          // Add navigation controls
+          mapInstance.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-        // Update marker
-        if (markerRef.current) {
-          markerRef.current.setLngLat([lng, lat]);
-        } else {
+          // Add click handler to set coordinates
+          mapInstance.current.on('click', (e) => {
+            const { lng, lat } = e.lngLat;
+            console.log('Map clicked at:', lng, lat);
+            setNewZone(prev => ({
+              ...prev,
+              coordinates: { lng, lat }
+            }));
+
+            // Update marker
+            if (markerRef.current) {
+              markerRef.current.setLngLat([lng, lat]);
+            } else {
+              markerRef.current = new mapboxgl.Marker({ color: '#ef4444' })
+                .setLngLat([lng, lat])
+                .addTo(mapInstance.current!);
+            }
+          });
+
+          // Add initial marker
           markerRef.current = new mapboxgl.Marker({ color: '#ef4444' })
-            .setLngLat([lng, lat])
-            .addTo(mapInstance.current!);
-        }
-      });
+            .setLngLat([newZone.coordinates.lng, newZone.coordinates.lat])
+            .addTo(mapInstance.current);
 
-      // Add initial marker
-      markerRef.current = new mapboxgl.Marker({ color: '#ef4444' })
-        .setLngLat([newZone.coordinates.lng, newZone.coordinates.lat])
-        .addTo(mapInstance.current);
+          // Handle map load completion
+          mapInstance.current.on('load', () => {
+            console.log('Map loaded successfully');
+            setMapLoading(false);
+          });
+
+          // Handle map errors
+          mapInstance.current.on('error', (e) => {
+            console.error('Map error:', e);
+            setMapError('Failed to load map tiles');
+            setMapLoading(false);
+          });
+
+          console.log('Map initialized successfully');
+        } catch (error) {
+          console.error('Failed to initialize map:', error);
+          setMapError('Failed to initialize map');
+          setMapLoading(false);
+          toast.error('Failed to load map. Please check your internet connection.');
+        }
+      }, 100);
+
+      return () => {
+        clearTimeout(timer);
+        if (mapInstance.current) {
+          console.log('Cleaning up map instance...');
+          mapInstance.current.remove();
+          mapInstance.current = null;
+          markerRef.current = null;
+          setMapLoading(false);
+          setMapError(null);
+        }
+      };
     }
 
     return () => {
       if (mapInstance.current) {
+        console.log('Cleaning up map instance...');
         mapInstance.current.remove();
         mapInstance.current = null;
         markerRef.current = null;
+        setMapLoading(false);
+        setMapError(null);
       }
     };
-  }, [activeTab]);
+  }, [activeTab, newZone.coordinates.lng, newZone.coordinates.lat]);
 
   const handleCreateZone = async () => {
     if (!newZone.name || !newZone.description) {
@@ -398,10 +452,75 @@ const ZoneSelectionModal: React.FC<ZoneSelectionModalProps> = ({
               {/* Map for coordinate selection */}
               <div className="space-y-2">
                 <Label>Click on the map to select coordinates</Label>
-                <div 
-                  ref={mapContainerRef} 
-                  className="w-full h-64 rounded-lg border"
-                />
+                
+                {/* Debug info */}
+                <div className="text-xs text-muted-foreground bg-gray-50 p-2 rounded">
+                  <div>Mapbox Token: {MAPBOX_ACCESS_TOKEN ? '✅ Set' : '❌ Missing'}</div>
+                  <div>Map Container: {mapContainerRef.current ? '✅ Mounted' : '❌ Not mounted'}</div>
+                  <div>Map Instance: {mapInstance.current ? '✅ Created' : '❌ Not created'}</div>
+                  <div>Active Tab: {activeTab}</div>
+                  <div>Map Loading: {mapLoading ? '🔄 Loading' : '✅ Ready'}</div>
+                  <div>Map Error: {mapError || '✅ No errors'}</div>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-1"
+                    onClick={() => {
+                      if (mapInstance.current) {
+                        mapInstance.current.remove();
+                        mapInstance.current = null;
+                        markerRef.current = null;
+                      }
+                      setMapLoading(false);
+                      setMapError(null);
+                    }}
+                  >
+                    Force Refresh Map
+                  </Button>
+                </div>
+                
+                <div className="relative">
+                  <div 
+                    ref={mapContainerRef} 
+                    className="w-full h-64 rounded-lg border bg-gray-50"
+                    style={{ minHeight: '256px' }}
+                  />
+                  
+                  {/* Loading overlay */}
+                  {mapLoading && (
+                    <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                        <p className="text-sm text-muted-foreground">Loading map...</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Error overlay */}
+                  {mapError && (
+                    <div className="absolute inset-0 bg-red-50 flex items-center justify-center rounded-lg">
+                      <div className="text-center">
+                        <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+                        <p className="text-sm text-red-600">{mapError}</p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-2"
+                          onClick={() => {
+                            setMapError(null);
+                            if (mapInstance.current) {
+                              mapInstance.current.remove();
+                              mapInstance.current = null;
+                              markerRef.current = null;
+                            }
+                          }}
+                        >
+                          Retry
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Click anywhere on the map to set the zone coordinates. The red marker shows the selected location.
                 </p>
