@@ -1,8 +1,8 @@
 // src/services/api.ts
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
-const WS_BASE_URL = 'ws://localhost:8000';
+const API_BASE_URL = 'https://171ccf457218.ngrok-free.app';
+const WS_BASE_URL = 'ws://171ccf457218.ngrok-free.app';
 
 // Create axios instance
 export const api = axios.create({

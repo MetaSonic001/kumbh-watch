@@ -48,6 +48,7 @@ import io
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Query, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # AI/ML imports
@@ -69,6 +70,15 @@ app = FastAPI(
     title="Crowd Detection & Disaster Management API",
     description="Real-time crowd monitoring with anomaly detection and emergency management",
     version="1.0.0"
+)
+
+# Add CORS middleware to allow frontend access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
 )
 
 # Global configuration

@@ -143,3 +143,124 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Mapbox Zone Marker Styles */
+.zone-marker {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zone-marker:hover {
+  transform: scale(1.1);
+}
+
+.zone-marker .relative {
+  position: relative;
+}
+
+.zone-marker .relative:hover .absolute {
+  opacity: 1;
+}
+
+/* Mapbox Popup Customization */
+.mapboxgl-popup-content {
+  border-radius: 12px !important;
+  padding: 0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: hsl(var(--border)) !important;
+}
+
+.mapboxgl-popup-close-button {
+  color: hsl(var(--muted-foreground)) !important;
+  font-size: 18px !important;
+  padding: 8px !important;
+  right: 8px !important;
+  top: 8px !important;
+}
+
+.mapboxgl-popup-close-button:hover {
+  color: hsl(var(--foreground)) !important;
+  background: hsl(var(--muted)) !important;
+  border-radius: 6px !important;
+}
+
+/* Mapbox Navigation Control Customization */
+.mapboxgl-ctrl-group {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  background: hsl(var(--card)) !important;
+}
+
+.mapboxgl-ctrl-group button {
+  color: hsl(var(--card-foreground)) !important;
+  border-bottom: 1px solid hsl(var(--border)) !important;
+}
+
+.mapboxgl-ctrl-group button:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+.mapboxgl-ctrl-group button:last-child {
+  border-bottom: none !important;
+}
+
+/* Map Container Customization */
+.mapboxgl-map {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Mapbox Container Visibility Fixes */
+.mapboxgl-map {
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.mapboxgl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Ensure map container is visible */
+.mapboxgl-map-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 384px !important;
+}
+
+/* Force map visibility */
+.mapboxgl-map {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Custom River Animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Zone Type Color Indicators */
+.zone-type-ghat { background-color: hsl(var(--primary)) !important; }
+.zone-type-gate { background-color: hsl(var(--secondary)) !important; }
+.zone-type-camp { background-color: hsl(var(--success)) !important; }
+.zone-type-medical { background-color: hsl(var(--destructive)) !important; }
+.zone-type-security { background-color: hsl(var(--warning)) !important; }
