@@ -17,7 +17,6 @@ import {
   Users,
   CheckCircle,
   Map,
-  Navigation,
   Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -25,7 +24,6 @@ import { useNavigate } from "react-router-dom";
 import { useSetup } from "@/contexts/SetupContext";
 import SetupLayout from "@/components/setup/SetupLayout";
 import MapboxZoneSelector from "@/components/map/MapboxZoneSelector";
-import ReRoutingSuggestions from "@/components/setup/ReRoutingSuggestions";
 import { toast } from "sonner";
 import { backendService, BackendZone } from "@/services/backendService";
 
@@ -157,11 +155,6 @@ const ZoneSetup = () => {
     description: zone.description
   }));
 
-  const handleZoneSelect = (zoneId: string) => {
-    setSelectedZone(zoneId);
-    toast.success(`Selected zone ${zoneId} for analysis`);
-  };
-
   return (
     <SetupLayout
       title="Zone Setup"
@@ -170,10 +163,9 @@ const ZoneSetup = () => {
       onBack={() => navigate("/setup/wizard")}
     >
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="setup">Zone Setup</TabsTrigger>
           <TabsTrigger value="map">Map View</TabsTrigger>
-          <TabsTrigger value="routing">Re-routing</TabsTrigger>
         </TabsList>
 
         <TabsContent value="setup" className="space-y-6">
@@ -288,24 +280,6 @@ const ZoneSetup = () => {
                 onZoneAdd={handleCreateZone}
                 onZoneDelete={handleDeleteZone}
                 selectedZoneType={selectedZoneType}
-              />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="routing" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Navigation className="w-5 h-5 text-primary" />
-                Intelligent Re-routing System
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ReRoutingSuggestions
-                currentZoneId={selectedZone}
-                onZoneSelect={handleZoneSelect}
-                showAllSuggestions={true}
               />
             </CardContent>
           </Card>

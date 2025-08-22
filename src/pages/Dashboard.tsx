@@ -117,6 +117,11 @@ const Dashboard = () => {
       case 'broadcast':
         toast.success(`Broadcast sent: ${details.message}`);
         break;
+      case 'smart_re_routing':
+        toast.info('Smart Re-routing System', {
+          description: 'Navigate to the Live Map to view and manage smart re-routing suggestions. The system automatically detects high-density zones.'
+        });
+        break;
       default:
         toast.info(`Action: ${action}`);
     }

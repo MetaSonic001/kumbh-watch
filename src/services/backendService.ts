@@ -211,6 +211,17 @@ class BackendService {
     return response;
   }
 
+  async getZones(): Promise<BackendZone[]> {
+    const response = await this.makeRequest(`${this.baseUrl}/zones/heatmap`);
+    return response;
+  }
+
+  async deleteZone(zoneId: string): Promise<void> {
+    await this.makeRequest(`${this.baseUrl}/zones/${zoneId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Camera Management
   async startCameraMonitoring(cameraData: {
     camera_id: string;
@@ -253,9 +264,42 @@ class BackendService {
     });
   }
 
+  async sendEmergencyInstructions(instructionsData: {
+    instructions: string;
+    priority: string;
+    duration: number;
+  }): Promise<void> {
+    await this.makeRequest(`${this.baseUrl}/instructions`, {
+      method: 'POST',
+      body: JSON.stringify(instructionsData),
+    });
+  }
+
   // Add new methods for live map integration
   async getZonesWithHeatmap(): Promise<any[]> {
     const response = await this.makeRequest(`${this.baseUrl}/zones/heatmap`);
+    
+    return response;
+  }
+
+  // Re-routing suggestions
+  async getReRoutingSuggestions(zoneId?: string): Promise<ReRoutingSuggestion[]> {
+    const url = zoneId 
+      ? `${this.baseUrl}/re-routing-suggestions?zone_id=${zoneId}`
+      : `${this.baseUrl}/re-routing-suggestions`;
+    
+    const response = await this.makeRequest(url);
+    return response;
+  }
+
+  async generateReRoutingSuggestion(fromZoneId: string, toZoneId: string): Promise<ReRoutingSuggestion> {
+    const response = await this.makeRequest(`${this.baseUrl}/re-routing-suggestions/generate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        from_zone_id: fromZoneId,
+        to_zone_id: toZoneId
+      }),
+    });
     
     return response;
   }
