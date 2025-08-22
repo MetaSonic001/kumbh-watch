@@ -1249,8 +1249,16 @@ async def update_camera_threshold(
         raise HTTPException(status_code=500, detail=f"Failed to update threshold: {str(e)}")
 
 # ============================================================================
-# NEW ROUTES FOR BACKEND SERVICE INTEGRATION
+# FIXED ROUTES FOR BACKEND SERVICE INTEGRATION
 # ============================================================================
+
+# Add this import at the top if not already there
+from pydantic import BaseModel
+
+# Define the request model
+class ReRoutingRequest(BaseModel):
+    from_zone_id: str
+    to_zone_id: str
 
 # Zone Management Routes
 @app.post("/zones")
@@ -1293,24 +1301,30 @@ async def create_zone(zone_data: dict):
 @app.get("/zones")
 async def get_zones():
     """Get all zones"""
-    if not state.zones:
-        return []
-    return list(state.zones.values())
+    try:
+        if not state.zones:
+            return []
+        return list(state.zones.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch zones: {str(e)}")
 
 @app.get("/zones/{zone_id}")
 async def get_zone(zone_id: str):
     """Get a specific zone"""
-    if zone_id not in state.zones:
-        raise HTTPException(status_code=404, detail="Zone not found")
-    return state.zones[zone_id]
+    try:
+        if zone_id not in state.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        return state.zones[zone_id]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch zone: {str(e)}")
 
 @app.put("/zones/{zone_id}")
 async def update_zone(zone_id: str, zone_data: dict):
     """Update a zone"""
-    if zone_id not in state.zones:
-        raise HTTPException(status_code=404, detail="Zone not found")
-    
     try:
+        if zone_id not in state.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
         # Update zone data
         for key, value in zone_data.items():
             if key in state.zones[zone_id]:
@@ -1333,10 +1347,10 @@ async def update_zone(zone_id: str, zone_data: dict):
 @app.delete("/zones/{zone_id}")
 async def delete_zone(zone_id: str):
     """Delete a zone"""
-    if zone_id not in state.zones:
-        raise HTTPException(status_code=404, detail="Zone not found")
-    
     try:
+        if zone_id not in state.zones:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
         # Remove zone and related data
         del state.zones[zone_id]
         if zone_id in state.crowd_flow_data:
@@ -1374,24 +1388,30 @@ async def create_team(team_data: dict):
 @app.get("/teams")
 async def get_teams():
     """Get all teams"""
-    if not state.teams:
-        return []
-    return list(state.teams.values())
+    try:
+        if not state.teams:
+            return []
+        return list(state.teams.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch teams: {str(e)}")
 
 @app.get("/teams/{team_id}")
 async def get_team(team_id: str):
     """Get a specific team"""
-    if team_id not in state.teams:
-        raise HTTPException(status_code=404, detail="Team not found")
-    return state.teams[team_id]
+    try:
+        if team_id not in state.teams:
+            raise HTTPException(status_code=404, detail="Team not found")
+        return state.teams[team_id]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch team: {str(e)}")
 
 @app.put("/teams/{team_id}")
 async def update_team(team_id: str, team_data: dict):
     """Update a team"""
-    if team_id not in state.teams:
-        raise HTTPException(status_code=404, detail="Team not found")
-    
     try:
+        if team_id not in state.teams:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
         for key, value in team_data.items():
             if key in state.teams[team_id]:
                 state.teams[team_id][key] = value
@@ -1404,10 +1424,10 @@ async def update_team(team_id: str, team_data: dict):
 @app.delete("/teams/{team_id}")
 async def delete_team(team_id: str):
     """Delete a team"""
-    if team_id not in state.teams:
-        raise HTTPException(status_code=404, detail="Team not found")
-    
     try:
+        if team_id not in state.teams:
+            raise HTTPException(status_code=404, detail="Team not found")
+        
         del state.teams[team_id]
         return {"status": "success", "message": f"Team {team_id} deleted"}
         
@@ -1418,24 +1438,24 @@ async def delete_team(team_id: str):
 @app.get("/crowd-flow")
 async def get_crowd_flow_data():
     """Get crowd flow data for all zones"""
-    if not state.crowd_flow_data:
-        return []
-    return list(state.crowd_flow_data.values())
+    try:
+        if not state.crowd_flow_data:
+            return []
+        return list(state.crowd_flow_data.values())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch crowd flow data: {str(e)}")
 
 @app.get("/zones/{zone_id}/crowd-flow")
 async def get_zone_crowd_flow(zone_id: str):
     """Get crowd flow data for a specific zone"""
-    if zone_id not in state.crowd_flow_data:
-        raise HTTPException(status_code=404, detail="Zone not found")
-    return state.crowd_flow_data[zone_id]
+    try:
+        if zone_id not in state.crowd_flow_data:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        return state.crowd_flow_data[zone_id]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch zone crowd flow: {str(e)}")
 
 # Re-routing Suggestions Routes
-from pydantic import BaseModel
-
-class ReRoutingRequest(BaseModel):
-    from_zone_id: str
-    to_zone_id: str
-
 @app.get("/re-routing-suggestions")
 async def get_re_routing_suggestions(zone_id: str = Query(None, description="Zone ID to get suggestions for")):
     """Get re-routing suggestions"""
@@ -1484,21 +1504,24 @@ async def generate_re_routing_suggestion(data: ReRoutingRequest):
 @app.get("/cameras")
 async def get_cameras():
     """Get all cameras with zone information"""
-    cameras = []
-    for camera_id, config in state.camera_configs.items():
-        camera = {
-            "id": camera_id,
-            "name": f"Camera {camera_id}",
-            "zone_id": config.get("zone_id", "unknown"),
-            "rtsp_url": config.get("source", ""),
-            "status": config.get("status", "stopped"),
-            "people_count": state.frame_processors[camera_id].last_count if camera_id in state.frame_processors else 0,
-            "threshold": config.get("threshold", 20),
-            "created_at": config.get("started_at", "")
-        }
-        cameras.append(camera)
-    
-    return cameras
+    try:
+        cameras = []
+        for camera_id, config in state.camera_configs.items():
+            camera = {
+                "id": camera_id,
+                "name": f"Camera {camera_id}",
+                "zone_id": config.get("zone_id", "unknown"),
+                "rtsp_url": config.get("source", ""),
+                "status": config.get("status", "stopped"),
+                "people_count": state.frame_processors[camera_id].last_count if camera_id in state.frame_processors else 0,
+                "threshold": config.get("threshold", 20),
+                "created_at": config.get("started_at", "")
+            }
+            cameras.append(camera)
+        
+        return cameras
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch cameras: {str(e)}")
 
 # ============================================================================
 # HELPER FUNCTIONS FOR RE-ROUTING AND CROWD ANALYSIS
