@@ -112,7 +112,8 @@ class GlobalState:
         self.websocket_connections: Dict[str, Set[WebSocket]] = {
             "alerts": set(),
             "frames": defaultdict(set),
-            "instructions": set()
+            "instructions": set(),
+            "live_map": set() # New for live map
         }
         self.frame_processors: Dict[str, 'FrameProcessor'] = {}
         self.last_alerts: Dict[str, float] = {}
@@ -166,6 +167,124 @@ async def load_models():
         print(f"❌ Error loading models: {e}")
         raise
 
+# Enhanced Heatmap Generation
+class HeatmapGenerator:
+    def __init__(self, zone_coordinates: dict, zone_capacity: int):
+        self.zone_coordinates = zone_coordinates
+        self.zone_capacity = zone_capacity
+        self.heatmap_resolution = 50  # 50x50 grid for efficiency
+        self.heatmap_history = []
+        
+    def generate_heatmap(self, people_detections: List[PersonDetection], frame_shape: tuple) -> dict:
+        """Generate dynamic heatmap based on current crowd detection"""
+        if not people_detections:
+            return self._empty_heatmap()
+        
+        # Create heatmap grid
+        heatmap = np.zeros((self.heatmap_resolution, self.heatmap_resolution))
+        
+        # Map detections to heatmap grid
+        for detection in people_detections:
+            # Convert frame coordinates to heatmap coordinates
+            hx, hy = self._frame_to_heatmap_coords(detection.center, frame_shape)
+            
+            if 0 <= hx < self.heatmap_resolution and 0 <= hy < self.heatmap_resolution:
+                # Add density based on confidence and area
+                density_value = detection.confidence * (detection.area / 1000)  # Normalize area
+                heatmap[hy, hx] += density_value
+        
+        # Apply gaussian smoothing for realistic heatmap
+        heatmap_smooth = gaussian_filter(heatmap, sigma=1.5)
+        
+        # Find hotspots
+        hotspots = self._find_hotspots(heatmap_smooth)
+        
+        # Calculate overall density metrics
+        total_density = np.sum(heatmap_smooth)
+        max_density = np.max(heatmap_smooth)
+        avg_density = total_density / (self.heatmap_resolution ** 2)
+        
+        heatmap_data = {
+            "hotspots": hotspots,
+            "total_people": len(people_detections),
+            "current_density": float(avg_density),
+            "max_density": float(max_density),
+            "density_percentage": float((total_density / self.zone_capacity) * 100),
+            "heatmap_shape": [self.heatmap_resolution, self.heatmap_resolution],
+            "last_update": datetime.now().isoformat() + "Z"
+        }
+        
+        # Store in history for trend analysis
+        self.heatmap_history.append(heatmap_data)
+        if len(self.heatmap_history) > 10:  # Keep last 10 updates
+            self.heatmap_history.pop(0)
+        
+        return heatmap_data
+    
+    def _frame_to_heatmap_coords(self, frame_coords: Tuple[float, float], frame_shape: tuple) -> Tuple[int, int]:
+        """Convert frame coordinates to heatmap grid coordinates"""
+        x, y = frame_coords
+        frame_width, frame_height = frame_shape[1], frame_shape[0]
+        
+        # Normalize coordinates to 0-1 range
+        norm_x = x / frame_width
+        norm_y = y / frame_height
+        
+        # Convert to heatmap grid coordinates
+        hx = int(norm_x * self.heatmap_resolution)
+        hy = int(norm_y * self.heatmap_resolution)
+        
+        return hx, hy
+    
+    def _find_hotspots(self, heatmap: np.ndarray) -> List[dict]:
+        """Find high-density areas in the heatmap"""
+        hotspots = []
+        threshold = np.max(heatmap) * 0.6  # 60% of max density
+        
+        # Find regions above threshold
+        high_density_regions = np.where(heatmap > threshold)
+        
+        for i in range(len(high_density_regions[0])):
+            hy, hx = high_density_regions[0][i], high_density_regions[1][i]
+            intensity = heatmap[hy, hx]
+            
+            # Convert back to frame coordinates for visualization
+            frame_x = (hx / self.heatmap_resolution) * 1280  # Assuming 1280x720
+            frame_y = (hy / self.heatmap_resolution) * 720
+            
+            hotspots.append({
+                "center_coordinates": [int(frame_x), int(frame_y)],
+                "intensity": float(intensity),
+                "density_level": self._get_density_level(intensity),
+                "radius": int(20 + (intensity / np.max(heatmap)) * 30)  # Dynamic radius
+            })
+        
+        return hotspots
+    
+    def _get_density_level(self, intensity: float) -> str:
+        """Determine density level based on intensity"""
+        if intensity < 0.1:
+            return "LOW"
+        elif intensity < 0.3:
+            return "MEDIUM"
+        elif intensity < 0.6:
+            return "HIGH"
+        else:
+            return "CRITICAL"
+    
+    def _empty_heatmap(self) -> dict:
+        """Return empty heatmap structure"""
+        return {
+            "hotspots": [],
+            "total_people": 0,
+            "current_density": 0.0,
+            "max_density": 0.0,
+            "density_percentage": 0.0,
+            "heatmap_shape": [self.heatmap_resolution, self.heatmap_resolution],
+            "last_update": datetime.now().isoformat() + "Z"
+        }
+
+# Enhanced FrameProcessor with Zone-Aware Heatmap
 class FrameProcessor:
     def __init__(self, camera_id: str, source: str, threshold: int = 20, zone_id: str = None):
         self.camera_id = camera_id
@@ -176,9 +295,19 @@ class FrameProcessor:
         self.frame_queue = deque(maxlen=CONFIG['processing']['max_frame_queue'])
         self.last_count = 0
         self.last_heatmap_update = 0
-        self.movement_tracker = deque(maxlen=10)  # Track recent detections for anomaly detection
+        self.movement_tracker = deque(maxlen=10)
         self.processing_thread = None
         
+        # Initialize heatmap generator if zone is specified
+        if zone_id and zone_id in state.zones:
+            zone = state.zones[zone_id]
+            self.heatmap_generator = HeatmapGenerator(
+                zone["coordinates"], 
+                zone["capacity"]
+            )
+        else:
+            self.heatmap_generator = None
+    
     def start(self):
         """Start the frame processing in a separate thread"""
         if self.is_running:
@@ -257,7 +386,7 @@ class FrameProcessor:
                 cap.release()
     
     def _analyze_frame(self, frame: np.ndarray, frame_count: int) -> FrameAnalysis:
-        """Analyze a single frame for people detection and anomalies"""
+        """Enhanced frame analysis with zone-aware heatmap generation"""
         current_time = time.time()
         
         # Run YOLO detection
@@ -295,10 +424,11 @@ class FrameProcessor:
         # Detect anomalies
         anomalies = self._detect_anomalies(people_detections, frame)
         
-        # Generate heatmap data if needed
+        # Generate enhanced heatmap if zone is specified
         heatmap_data = None
-        if current_time - self.last_heatmap_update > CONFIG['processing']['heatmap_update_interval']:
-            heatmap_data = self._generate_heatmap(people_detections, frame.shape)
+        if (self.heatmap_generator and 
+            current_time - self.last_heatmap_update > CONFIG['processing']['heatmap_update_interval']):
+            heatmap_data = self.heatmap_generator.generate_heatmap(people_detections, frame.shape)
             self.last_heatmap_update = current_time
         
         # Store for movement tracking
@@ -396,49 +526,8 @@ class FrameProcessor:
         
         return anomalies
     
-    def _generate_heatmap(self, detections: List[PersonDetection], frame_shape: tuple) -> dict:
-        """Generate heatmap data from person detections"""
-        if not detections:
-            return None
-        
-        height, width = frame_shape[:2]
-        heatmap = np.zeros((height // 4, width // 4))  # Lower resolution for efficiency
-        
-        # Create heatmap from person centers
-        for detection in detections:
-            x, y = detection.center
-            hx, hy = int(y // 4), int(x // 4)
-            if 0 <= hx < heatmap.shape[0] and 0 <= hy < heatmap.shape[1]:
-                heatmap[hx, hy] += 1
-        
-        # Apply gaussian filter for smooth heatmap
-        heatmap_smooth = gaussian_filter(heatmap, sigma=2)
-        
-        # Find hotspots
-        hotspots = []
-        threshold = np.max(heatmap_smooth) * 0.5
-        hotspot_locations = np.where(heatmap_smooth > threshold)
-        
-        for i in range(len(hotspot_locations[0])):
-            hy, hx = hotspot_locations[0][i], hotspot_locations[1][i]
-            intensity = heatmap_smooth[hy, hx]
-            
-            hotspots.append({
-                "center_coordinates": [int(hx * 4), int(hy * 4)],
-                "intensity": float(intensity),
-                "people_in_area": int(heatmap[hy, hx]),
-                "density_level": "CRITICAL" if intensity > np.max(heatmap_smooth) * 0.8 else "HIGH"
-            })
-        
-        return {
-            "hotspots": hotspots,
-            "total_people": len(detections),
-            "max_density": float(np.max(heatmap_smooth)),
-            "heatmap_shape": list(heatmap.shape)
-        }
-    
     async def _handle_analysis(self, analysis: FrameAnalysis, frame: np.ndarray):
-        """Handle the analysis results - send alerts and broadcast data"""
+        """Enhanced analysis handling with live map updates"""
         current_time = time.time()
         
         # Update zone crowd flow data if camera is associated with a zone
@@ -449,6 +538,11 @@ class FrameProcessor:
             zone_data["occupancy_percentage"] = (analysis.people_count / zone_data["capacity"]) * 100
             zone_data["density_level"] = analysis.density_level
             zone_data["last_update"] = datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
+            
+            # Update heatmap data in zone
+            if analysis.heatmap_data:
+                if self.zone_id in state.zones:
+                    state.zones[self.zone_id]["heatmap_data"] = analysis.heatmap_data
             
             # Determine trend based on previous count
             if hasattr(self, 'last_zone_count'):
@@ -540,8 +634,8 @@ class FrameProcessor:
         if self.camera_id in state.websocket_connections["frames"] and \
            len(state.websocket_connections["frames"][self.camera_id]) > 0:
             
-            # Annotate frame with detections
-            annotated_frame = self._annotate_frame(frame, analysis)
+            # Annotate frame with detections and heatmap overlay
+            annotated_frame = self._annotate_frame_with_heatmap(frame, analysis)
             
             # Encode frame to base64
             _, buffer = cv2.imencode('.jpg', annotated_frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -550,16 +644,34 @@ class FrameProcessor:
             live_frame = {
                 "type": "LIVE_FRAME",
                 "camera_id": self.camera_id,
+                "zone_id": self.zone_id,
                 "frame": f"data:image/jpeg;base64,{frame_b64}",
                 "people_count": analysis.people_count,
                 "density_level": analysis.density_level,
+                "heatmap_data": analysis.heatmap_data,
                 "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
             }
             
             await self._broadcast_to_websockets("frames", live_frame, self.camera_id)
     
-    def _annotate_frame(self, frame: np.ndarray, analysis: FrameAnalysis) -> np.ndarray:
-        """Annotate frame with detection results"""
+    async def _broadcast_live_map_update(self):
+        """Broadcast live map updates to all connected clients"""
+        if "live_map" in state.websocket_connections:
+            try:
+                map_update = {
+                    "type": "ZONE_UPDATE",
+                    "zone_id": self.zone_id,
+                    "zone_data": state.crowd_flow_data.get(self.zone_id, {}),
+                    "heatmap_data": state.zones.get(self.zone_id, {}).get("heatmap_data", {}),
+                    "timestamp": datetime.now().isoformat() + "Z"
+                }
+                
+                await self._broadcast_to_websockets("live_map", map_update)
+            except Exception as e:
+                print(f"Error broadcasting live map update: {e}")
+    
+    def _annotate_frame_with_heatmap(self, frame: np.ndarray, analysis: FrameAnalysis) -> np.ndarray:
+        """Annotate frame with detections and heatmap overlay"""
         annotated = frame.copy()
         
         # Draw person bounding boxes
@@ -573,20 +685,34 @@ class FrameProcessor:
             cv2.putText(annotated, f"{detection.confidence:.2f}", 
                        (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         
-        # Draw anomaly indicators
-        for anomaly in analysis.anomalies:
-            x, y = [int(coord) for coord in anomaly['location']]
-            
-            if anomaly['type'] == 'FALLEN_PERSON':
-                cv2.circle(annotated, (x, y), 30, (0, 0, 255), 3)
-                cv2.putText(annotated, "FALLEN", (x - 30, y - 40), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            elif anomaly['type'] == 'STAMPEDE':
-                cv2.putText(annotated, "STAMPEDE ALERT!", (50, 50), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+        # Draw heatmap hotspots if available
+        if analysis.heatmap_data and "hotspots" in analysis.heatmap_data:
+            for hotspot in analysis.heatmap_data["hotspots"]:
+                x, y = hotspot["center_coordinates"]
+                radius = hotspot["radius"]
+                intensity = hotspot["intensity"]
+                
+                # Color based on density level
+                if hotspot["density_level"] == "CRITICAL":
+                    color = (0, 0, 255)  # Red
+                elif hotspot["density_level"] == "HIGH":
+                    color = (0, 165, 255)  # Orange
+                elif hotspot["density_level"] == "MEDIUM":
+                    color = (0, 255, 255)  # Yellow
+                else:
+                    color = (0, 255, 0)  # Green
+                
+                # Draw heatmap circle
+                cv2.circle(annotated, (x, y), radius, color, -1)
+                cv2.circle(annotated, (x, y), radius, (255, 255, 255), 2)
+                
+                # Add density label
+                cv2.putText(annotated, f"{intensity:.2f}", (x-20, y+5), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
         
         # Draw info panel
         info_text = [
+            f"Zone: {self.zone_id or 'Unknown'}",
             f"People: {analysis.people_count}",
             f"Density: {analysis.density_level}",
             f"Threshold: {self.threshold}",
@@ -605,6 +731,8 @@ class FrameProcessor:
         """Broadcast message to WebSocket connections"""
         if channel == "frames" and camera_id:
             connections = state.websocket_connections["frames"][camera_id].copy()
+        elif channel == "live_map":
+            connections = state.websocket_connections["live_map"].copy()
         else:
             connections = state.websocket_connections[channel].copy()
         
@@ -626,11 +754,12 @@ class FrameProcessor:
                 dead_connections.add(websocket)
         
         # Clean up dead connections
-        for dead_ws in dead_connections:
-            if channel == "frames" and camera_id:
-                state.websocket_connections["frames"][camera_id].discard(dead_ws)
-            else:
-                state.websocket_connections[channel].discard(dead_ws)
+        if channel == "frames" and camera_id:
+            state.websocket_connections["frames"][camera_id].discard(dead_ws)
+        elif channel == "live_map":
+            state.websocket_connections["live_map"].discard(dead_ws)
+        else:
+            state.websocket_connections[channel].discard(dead_ws)
 
 # Startup event
 @app.on_event("startup")
@@ -688,7 +817,9 @@ async def startup_event():
             "people_count": 0,
             "density_level": "LOW",
             "trend": "stable",
-            "last_update": datetime.now().isoformat() + "Z"
+            "last_update": datetime.now().isoformat() + "Z",
+            "heatmap_history": [],
+            "crowd_movement": []
         }
     
     # Initialize sample teams for testing
@@ -813,6 +944,40 @@ async def websocket_instructions(websocket: WebSocket):
     finally:
         state.websocket_connections["instructions"].discard(websocket)
 
+# Live Map WebSocket for Real-time Updates
+@app.websocket("/ws/live-map")
+async def websocket_live_map(websocket: WebSocket):
+    """WebSocket endpoint for live map updates including heatmaps"""
+    await websocket.accept()
+    state.websocket_connections["live_map"] = state.websocket_connections.get("live_map", set())
+    state.websocket_connections["live_map"].add(websocket)
+    
+    try:
+        # Send initial map data
+        initial_data = {
+            "type": "MAP_INITIALIZATION",
+            "zones": await get_zones_with_heatmap(),
+            "timestamp": datetime.now().isoformat() + "Z"
+        }
+        await websocket.send_text(json.dumps(initial_data))
+        
+        # Keep connection alive and send periodic updates
+        while True:
+            await asyncio.sleep(5)  # Update every 5 seconds
+            
+            # Send current heatmap data for all zones
+            map_update = {
+                "type": "MAP_UPDATE",
+                "zones": await get_zones_with_heatmap(),
+                "timestamp": datetime.now().isoformat() + "Z"
+            }
+            await websocket.send_text(json.dumps(map_update))
+            
+    except WebSocketDisconnect:
+        pass
+    finally:
+        state.websocket_connections["live_map"].discard(websocket)
+
 # API Routes
 @app.get("/")
 async def root():
@@ -861,7 +1026,8 @@ async def root():
             "websockets": {
                 "alerts": "/ws/alerts",
                 "frames": "/ws/frames/{camera_id}",
-                "instructions": "/ws/instructions"
+                "instructions": "/ws/instructions",
+                "live_map": "/ws/live-map"
             }
         },
         "testing": {
@@ -871,14 +1037,21 @@ async def root():
         }
     }
 
+# Enhanced Camera-Zone Association
 @app.post("/monitor/rtsp")
 async def start_rtsp_monitoring(
     camera_id: str = Query(..., description="Unique camera identifier"),
     rtsp_url: str = Query(..., description="RTSP stream URL"),
     threshold: int = Query(20, description="People count threshold for alerts"),
-    zone_id: str = Query(None, description="Zone ID this camera is monitoring")
+    zone_id: str = Query(..., description="Zone ID this camera is monitoring")
 ):
-    """Start monitoring an RTSP stream"""
+    """Start monitoring an RTSP stream with zone association"""
+    
+    if not zone_id:
+        raise HTTPException(status_code=400, detail="Zone ID is required for heatmap generation")
+    
+    if zone_id not in state.zones:
+        raise HTTPException(status_code=404, detail="Zone not found")
     
     if camera_id in state.frame_processors:
         # Stop existing processor
@@ -886,7 +1059,7 @@ async def start_rtsp_monitoring(
         del state.frame_processors[camera_id]
     
     try:
-        # Create and start new processor
+        # Create and start new processor with zone association
         processor = FrameProcessor(camera_id, rtsp_url, threshold, zone_id)
         processor.start()
         
@@ -901,28 +1074,36 @@ async def start_rtsp_monitoring(
         
         return {
             "status": "success",
-            "message": f"Started monitoring camera {camera_id}",
+            "message": f"Started monitoring camera {camera_id} in zone {zone_id}",
             "camera_id": camera_id,
+            "zone_id": zone_id,
             "rtsp_url": rtsp_url,
             "threshold": threshold,
-            "zone_id": zone_id,
             "websocket_endpoints": {
                 "alerts": f"/ws/alerts",
-                "frames": f"/ws/frames/{camera_id}"
+                "frames": f"/ws/frames/{camera_id}",
+                "live_map": f"/ws/live-map"
             }
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start monitoring: {str(e)}")
 
+# Video processing with zone association
 @app.post("/process/video")
 async def process_video_file(
     camera_id: str = Query(..., description="Unique camera identifier for this video"),
     threshold: int = Query(20, description="People count threshold for alerts"),
-    zone_id: str = Query(None, description="Zone ID this camera is monitoring"),
+    zone_id: str = Query(..., description="Zone ID this camera is monitoring"),
     file: UploadFile = File(..., description="Video file to process")
 ):
-    """Process an uploaded video file for crowd detection"""
+    """Process an uploaded video file with zone association"""
+    
+    if not zone_id:
+        raise HTTPException(status_code=400, detail="Zone ID is required for heatmap generation")
+    
+    if zone_id not in state.zones:
+        raise HTTPException(status_code=404, detail="Zone not found")
     
     # Validate file type
     if not file.content_type.startswith('video/'):
@@ -941,7 +1122,7 @@ async def process_video_file(
             state.frame_processors[camera_id].stop()
             del state.frame_processors[camera_id]
         
-        # Create and start processor for video file
+        # Create and start processor for video file with zone association
         processor = FrameProcessor(camera_id, temp_file_path, threshold, zone_id)
         processor.start()
         
@@ -957,10 +1138,10 @@ async def process_video_file(
         
         return {
             "status": "success",
-            "message": f"Started processing video {file.filename}",
+            "message": f"Started processing video {file.filename} in zone {zone_id}",
             "camera_id": camera_id,
-            "threshold": threshold,
             "zone_id": zone_id,
+            "threshold": threshold,
             "file_info": {
                 "filename": file.filename,
                 "size": len(content),
@@ -968,7 +1149,8 @@ async def process_video_file(
             },
             "websocket_endpoints": {
                 "alerts": f"/ws/alerts",
-                "frames": f"/ws/frames/{camera_id}"
+                "frames": f"/ws/frames/{camera_id}",
+                "live_map": f"/ws/live-map"
             }
         }
         
@@ -1173,7 +1355,8 @@ async def get_system_status():
         "websocket_connections": {
             "alerts": len(state.websocket_connections["alerts"]),
             "frames": {cam: len(conns) for cam, conns in state.websocket_connections["frames"].items()},
-            "instructions": len(state.websocket_connections["instructions"])
+            "instructions": len(state.websocket_connections["instructions"]),
+            "live_map": len(state.websocket_connections["live_map"])
         },
         "system_info": {
             "python_version": "3.x",
@@ -1260,37 +1443,63 @@ class ReRoutingRequest(BaseModel):
     from_zone_id: str
     to_zone_id: str
 
-# Zone Management Routes
+# Enhanced Zone Model
+class ZoneCoordinates(BaseModel):
+    lng: float
+    lat: float
+    radius: float = 100  # meters
+    boundary_points: Optional[List[Dict[str, float]]] = None  # For complex zones
+
+class ZoneData(BaseModel):
+    name: str
+    type: str
+    coordinates: ZoneCoordinates
+    capacity: int
+    description: str
+    zone_id: Optional[str] = None
+
+# Enhanced Zone Creation Route
 @app.post("/zones")
-async def create_zone(zone_data: dict):
-    """Create a new zone"""
+async def create_zone(zone_data: ZoneData):
+    """Create a new zone with enhanced coordinate system"""
     try:
         zone_id = str(uuid.uuid4())
+        
+        # Create zone with enhanced data
         zone = {
             "id": zone_id,
-            "name": zone_data["name"],
-            "type": zone_data["type"],
-            "coordinates": zone_data["coordinates"],
-            "capacity": zone_data["capacity"],
-            "description": zone_data["description"],
+            "name": zone_data.name,
+            "type": zone_data.type,
+            "coordinates": zone_data.coordinates.dict(),
+            "capacity": zone_data.capacity,
+            "description": zone_data.description,
             "current_occupancy": 0,
             "status": "active",
-            "created_at": datetime.now().isoformat() + "Z"
+            "created_at": datetime.now().isoformat() + "Z",
+            "heatmap_data": {
+                "hotspots": [],
+                "current_density": 0.0,
+                "max_density": 0.0,
+                "last_update": datetime.now().isoformat() + "Z"
+            }
         }
         
         state.zones[zone_id] = zone
         
-        # Initialize crowd flow data for this zone
+        # Initialize enhanced crowd flow data
         state.crowd_flow_data[zone_id] = {
             "zone_id": zone_id,
             "zone_name": zone["name"],
+            "coordinates": zone["coordinates"],
             "current_occupancy": 0,
             "capacity": zone["capacity"],
             "occupancy_percentage": 0.0,
             "people_count": 0,
             "density_level": "LOW",
             "trend": "stable",
-            "last_update": datetime.now().isoformat() + "Z"
+            "last_update": datetime.now().isoformat() + "Z",
+            "heatmap_history": [],
+            "crowd_movement": []
         }
         
         return zone
@@ -1298,70 +1507,32 @@ async def create_zone(zone_data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create zone: {str(e)}")
 
-@app.get("/zones")
-async def get_zones():
-    """Get all zones"""
+# Get zones with heatmap data
+@app.get("/zones/heatmap")
+async def get_zones_with_heatmap():
+    """Get all zones with current heatmap data"""
     try:
-        if not state.zones:
-            return []
-        return list(state.zones.values())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch zones: {str(e)}")
-
-@app.get("/zones/{zone_id}")
-async def get_zone(zone_id: str):
-    """Get a specific zone"""
-    try:
-        if zone_id not in state.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
-        return state.zones[zone_id]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch zone: {str(e)}")
-
-@app.put("/zones/{zone_id}")
-async def update_zone(zone_id: str, zone_data: dict):
-    """Update a zone"""
-    try:
-        if zone_id not in state.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
+        zones_with_heatmap = []
+        for zone_id, zone in state.zones.items():
+            crowd_data = state.crowd_flow_data.get(zone_id, {})
+            
+            zone_heatmap = {
+                "zone_id": zone_id,
+                "name": zone["name"],
+                "type": zone["type"],
+                "coordinates": zone["coordinates"],
+                "capacity": zone["capacity"],
+                "current_occupancy": crowd_data.get("people_count", 0),
+                "density_level": crowd_data.get("density_level", "LOW"),
+                "heatmap_data": zone.get("heatmap_data", {}),
+                "crowd_flow": crowd_data
+            }
+            zones_with_heatmap.append(zone_heatmap)
         
-        # Update zone data
-        for key, value in zone_data.items():
-            if key in state.zones[zone_id]:
-                state.zones[zone_id][key] = value
-        
-        # Update crowd flow data if capacity changed
-        if "capacity" in zone_data:
-            zone = state.zones[zone_id]
-            if zone_id in state.crowd_flow_data:
-                state.crowd_flow_data[zone_id]["capacity"] = zone["capacity"]
-                state.crowd_flow_data[zone_id]["occupancy_percentage"] = (
-                    zone["current_occupancy"] / zone["capacity"] * 100
-                )
-        
-        return state.zones[zone_id]
+        return zones_with_heatmap
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update zone: {str(e)}")
-
-@app.delete("/zones/{zone_id}")
-async def delete_zone(zone_id: str):
-    """Delete a zone"""
-    try:
-        if zone_id not in state.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
-        
-        # Remove zone and related data
-        del state.zones[zone_id]
-        if zone_id in state.crowd_flow_data:
-            del state.crowd_flow_data[zone_id]
-        if zone_id in state.re_routing_cache:
-            del state.re_routing_cache[zone_id]
-        
-        return {"status": "success", "message": f"Zone {zone_id} deleted"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete zone: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch zones with heatmap: {str(e)}")
 
 # Team Management Routes
 @app.post("/teams")

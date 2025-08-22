@@ -397,6 +397,17 @@ class BackendService {
     
     return alternativeZones.slice(0, 2).map(zone => zone.zone_name);
   }
+
+  // Add new methods for live map integration
+  async getZonesWithHeatmap(): Promise<any[]> {
+    const response = await fetch(`${this.baseUrl}/zones/heatmap`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch zones with heatmap: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
 }
 
 export const backendService = new BackendService();
