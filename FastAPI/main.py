@@ -204,13 +204,25 @@ class HeatmapGenerator:
         max_density = np.max(heatmap_smooth)
         avg_density = total_density / (self.heatmap_resolution ** 2)
         
+        # Calculate occupancy percentage
+        people_count = len(people_detections)
+        occupancy_percentage = (people_count / self.zone_capacity) * 100
+        
+        # Determine density level based on occupancy
+        density_level = self._calculate_density_level(occupancy_percentage)
+        
+        # Generate color-coded heatmap data
+        color_heatmap = self._generate_color_heatmap(heatmap_smooth, density_level)
+        
         heatmap_data = {
             "hotspots": hotspots,
-            "total_people": len(people_detections),
+            "total_people": people_count,
             "current_density": float(avg_density),
             "max_density": float(max_density),
-            "density_percentage": float((total_density / self.zone_capacity) * 100),
+            "density_percentage": float(occupancy_percentage),
+            "density_level": density_level,
             "heatmap_shape": [self.heatmap_resolution, self.heatmap_resolution],
+            "color_heatmap": color_heatmap,
             "last_update": datetime.now().isoformat() + "Z"
         }
         
@@ -220,6 +232,133 @@ class HeatmapGenerator:
             self.heatmap_history.pop(0)
         
         return heatmap_data
+    
+    def _calculate_density_level(self, occupancy_percentage: float) -> str:
+        """Calculate density level based on occupancy percentage"""
+        if occupancy_percentage >= 90:
+            return "CRITICAL"
+        elif occupancy_percentage >= 70:
+            return "HIGH"
+        elif occupancy_percentage >= 40:
+            return "MEDIUM"
+        elif occupancy_percentage >= 10:
+            return "LOW"
+        else:
+            return "NONE"
+    
+    def _generate_color_heatmap(self, heatmap: np.ndarray, density_level: str) -> dict:
+        """Generate color-coded heatmap data for frontend visualization"""
+        # Normalize heatmap to 0-1 range
+        if np.max(heatmap) > 0:
+            normalized_heatmap = heatmap / np.max(heatmap)
+        else:
+            normalized_heatmap = heatmap
+        
+        # Convert to color-coded representation
+        color_data = []
+        for y in range(self.heatmap_resolution):
+            row = []
+            for x in range(self.heatmap_resolution):
+                intensity = normalized_heatmap[y, x]
+                color = self._get_color_for_intensity(intensity, density_level)
+                row.append({
+                    "x": x,
+                    "y": y,
+                    "intensity": float(intensity),
+                    "color": color,
+                    "rgb": self._hex_to_rgb(color)
+                })
+            color_data.append(row)
+        
+        return {
+            "resolution": self.heatmap_resolution,
+            "color_data": color_data,
+            "density_level": density_level,
+            "color_scale": self._get_color_scale(density_level)
+        }
+    
+    def _get_color_for_intensity(self, intensity: float, density_level: str) -> str:
+        """Get color based on intensity and density level"""
+        if density_level == "CRITICAL":
+            # Red to dark red scale
+            if intensity < 0.3:
+                return "#ff6b6b"
+            elif intensity < 0.6:
+                return "#ff5252"
+            else:
+                return "#d32f2f"
+        elif density_level == "HIGH":
+            # Orange to red scale
+            if intensity < 0.3:
+                return "#ffb74d"
+            elif intensity < 0.6:
+                return "#ff9800"
+            else:
+                return "#f57c00"
+        elif density_level == "MEDIUM":
+            # Yellow to orange scale
+            if intensity < 0.3:
+                return "#fff176"
+            elif intensity < 0.6:
+                return "#ffeb3b"
+            else:
+                return "#fbc02d"
+        elif density_level == "LOW":
+            # Green to yellow scale
+            if intensity < 0.3:
+                return "#81c784"
+            elif intensity < 0.6:
+                return "#66bb6a"
+            else:
+                return "#4caf50"
+        else:
+            # Blue for very low density
+            return "#42a5f5"
+    
+    def _get_color_scale(self, density_level: str) -> dict:
+        """Get color scale information for the current density level"""
+        scales = {
+            "CRITICAL": {
+                "low": "#ff6b6b",
+                "medium": "#ff5252",
+                "high": "#d32f2f",
+                "description": "Critical crowd density - immediate action required"
+            },
+            "HIGH": {
+                "low": "#ffb74d",
+                "medium": "#ff9800",
+                "high": "#f57c00",
+                "description": "High crowd density - monitor closely"
+            },
+            "MEDIUM": {
+                "low": "#fff176",
+                "medium": "#ffeb3b",
+                "high": "#fbc02d",
+                "description": "Moderate crowd density - normal conditions"
+            },
+            "LOW": {
+                "low": "#81c784",
+                "medium": "#66bb6a",
+                "high": "#4caf50",
+                "description": "Low crowd density - safe conditions"
+            },
+            "NONE": {
+                "low": "#42a5f5",
+                "medium": "#2196f3",
+                "high": "#1976d2",
+                "description": "Minimal crowd - very safe conditions"
+            }
+        }
+        return scales.get(density_level, scales["NONE"])
+    
+    def _hex_to_rgb(self, hex_color: str) -> dict:
+        """Convert hex color to RGB values"""
+        hex_color = hex_color.lstrip('#')
+        return {
+            "r": int(hex_color[0:2], 16),
+            "g": int(hex_color[2:4], 16),
+            "b": int(hex_color[4:6], 16)
+        }
     
     def _frame_to_heatmap_coords(self, frame_coords: Tuple[float, float], frame_shape: tuple) -> Tuple[int, int]:
         """Convert frame coordinates to heatmap grid coordinates"""
@@ -543,6 +682,8 @@ class FrameProcessor:
             if analysis.heatmap_data:
                 if self.zone_id in state.zones:
                     state.zones[self.zone_id]["heatmap_data"] = analysis.heatmap_data
+                    # Also update current_occupancy in the zone
+                    state.zones[self.zone_id]["current_occupancy"] = analysis.people_count
             
             # Determine trend based on previous count
             if hasattr(self, 'last_zone_count'):
@@ -553,6 +694,9 @@ class FrameProcessor:
                 else:
                     zone_data["trend"] = "stable"
             self.last_zone_count = analysis.people_count
+            
+            # Broadcast live map update
+            await self._broadcast_live_map_update()
         
         # Check for threshold breach
         if analysis.people_count != self.last_count:
@@ -561,6 +705,7 @@ class FrameProcessor:
                 "type": "LIVE_COUNT_UPDATE",
                 "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z",
                 "camera_id": self.camera_id,
+                "zone_id": self.zone_id,
                 "current_count": analysis.people_count,
                 "previous_count": self.last_count,
                 "change": analysis.people_count - self.last_count,
@@ -580,6 +725,7 @@ class FrameProcessor:
                     "type": "THRESHOLD_BREACH",
                     "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
                     "camera_id": self.camera_id,
+                    "zone_id": self.zone_id,
                     "severity": "HIGH" if analysis.people_count > self.threshold * 1.2 else "MEDIUM",
                     "message": f"People count ({analysis.people_count}) exceeds threshold ({self.threshold})",
                     "people_count": analysis.people_count,
@@ -601,6 +747,7 @@ class FrameProcessor:
                 "type": "ANOMALY_ALERT",
                 "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
                 "camera_id": self.camera_id,
+                "zone_id": self.zone_id,
                 "anomaly_type": anomaly['type'],
                 "severity": anomaly['severity'],
                 "message": anomaly['message'],
@@ -619,6 +766,7 @@ class FrameProcessor:
             heatmap_alert = {
                 "type": "HEATMAP_ALERT",
                 "camera_id": self.camera_id,
+                "zone_id": self.zone_id,
                 "severity": "HIGH" if analysis.people_count > self.threshold else "MEDIUM",
                 "message": f"Crowd density heatmap update - {analysis.people_count} people detected",
                 "heatmap_data": analysis.heatmap_data,

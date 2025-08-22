@@ -159,6 +159,22 @@ const LiveMap = () => {
             });
           }
         }
+      } else if (data.type === 'LIVE_COUNT_UPDATE') {
+        // Update zone with live count data
+        if (data.zone_id) {
+          setZones(prev => prev.map(zone => 
+            zone.id === data.zone_id 
+              ? { 
+                  ...zone, 
+                  current_occupancy: data.current_count,
+                  density_level: data.density_level
+                }
+              : zone
+          ));
+          
+          // Update zone marker color
+          updateZoneMarkerColor(data.zone_id, data.density_level);
+        }
       }
     };
 
@@ -182,6 +198,7 @@ const LiveMap = () => {
     zones.forEach(zone => {
       const markerElement = document.createElement('div');
       markerElement.className = 'zone-marker';
+      markerElement.setAttribute('data-zone-id', zone.id);
       markerElement.innerHTML = `
         <div class="relative group">
           <div class="w-10 h-10 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white text-sm font-bold cursor-pointer hover:scale-110 transition-transform duration-200" 
@@ -191,6 +208,7 @@ const LiveMap = () => {
           <div class="absolute -bottom-8 left-1/2 transform -translate-x-1/2 bg-black/80 text-white px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             ${zone.name}
           </div>
+          ${zone.density_level === 'CRITICAL' ? '<div class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>' : ''}
         </div>
       `;
 
@@ -198,10 +216,10 @@ const LiveMap = () => {
         .setLngLat([zone.coordinates.lng, zone.coordinates.lat])
         .addTo(mapInstance.current!);
 
-      // Add popup with zone information
+      // Add popup with enhanced zone information
       const popup = new mapboxgl.Popup({ offset: 25 })
         .setHTML(`
-          <div class="p-3 min-w-[200px]">
+          <div class="p-3 min-w-[250px]">
             <h3 class="font-semibold text-lg mb-2">${zone.name}</h3>
             <div class="space-y-2 text-sm">
               <div class="flex items-center gap-2">
@@ -228,6 +246,22 @@ const LiveMap = () => {
                   </div>
                   <div class="text-xs text-orange-600 mt-1">
                     ${zone.heatmap_data.hotspots.length} hotspots detected
+                  </div>
+                  ${zone.heatmap_data.color_heatmap ? `
+                    <div class="mt-2 text-xs text-orange-600">
+                      Color-coded density: ${zone.heatmap_data.color_heatmap.density_level}
+                    </div>
+                  ` : ''}
+                </div>
+              ` : ''}
+              ${zone.density_level === 'CRITICAL' ? `
+                <div class="mt-2 p-2 bg-red-50 rounded border border-red-200">
+                  <div class="flex items-center gap-2 text-red-700">
+                    <AlertTriangle className="w-4 h-4" />
+                    <span class="font-medium text-red-700">Critical Alert</span>
+                  </div>
+                  <div class="text-xs text-red-600 mt-1">
+                    Immediate action required - crowd density is critical
                   </div>
                 </div>
               ` : ''}
@@ -281,7 +315,7 @@ const LiveMap = () => {
         }
       });
 
-      // Add heatmap layer
+      // Add heatmap layer with enhanced colors
       mapInstance.current.addLayer({
         id: `heatmap-layer-${zoneId}`,
         type: 'heatmap',
@@ -293,14 +327,27 @@ const LiveMap = () => {
             ['linear'],
             ['heatmap-intensity'],
             0, 'rgba(0, 255, 0, 0)',
-            0.3, 'rgba(255, 255, 0, 0.5)',
+            0.2, 'rgba(0, 255, 0, 0.3)',
+            0.4, 'rgba(255, 255, 0, 0.5)',
             0.6, 'rgba(255, 165, 0, 0.7)',
+            0.8, 'rgba(255, 100, 0, 0.8)',
             1, 'rgba(255, 0, 0, 0.9)'
           ],
-          'heatmap-radius': 30,
+          'heatmap-radius': [
+            'interpolate',
+            ['linear'],
+            ['get', 'intensity'],
+            0, 20,
+            1, 60
+          ],
           'heatmap-opacity': heatmapOpacity
         }
       });
+
+      // Add color-coded heatmap if available
+      if (heatmapData.color_heatmap) {
+        addColorCodedHeatmap(zoneId, heatmapData.color_heatmap);
+      }
 
       setActiveHeatmapZone(zoneId);
     }
@@ -317,6 +364,14 @@ const LiveMap = () => {
     // Remove heatmap source
     if (mapInstance.current.getSource(`heatmap-${zoneId}`)) {
       mapInstance.current.removeSource(`heatmap-${zoneId}`);
+    }
+
+    // Remove color-coded heatmap layers and sources
+    if (mapInstance.current.getLayer(`color-heatmap-layer-${zoneId}`)) {
+      mapInstance.current.removeLayer(`color-heatmap-layer-${zoneId}`);
+    }
+    if (mapInstance.current.getSource(`color-heatmap-${zoneId}`)) {
+      mapInstance.current.removeSource(`color-heatmap-${zoneId}`);
     }
 
     if (activeHeatmapZone === zoneId) {
@@ -340,20 +395,93 @@ const LiveMap = () => {
     }
   };
 
+  const updateZoneMarkerColor = (zoneId: string, densityLevel: string) => {
+    // Find the marker element for this zone
+    const markerElement = document.querySelector(`[data-zone-id="${zoneId}"]`);
+    if (markerElement) {
+      const colorCircle = markerElement.querySelector('.zone-marker > div > div');
+      if (colorCircle) {
+        colorCircle.style.backgroundColor = getCrowdColor(densityLevel);
+      }
+    }
+  };
+
+  const addColorCodedHeatmap = (zoneId: string, colorHeatmap: any) => {
+    if (!mapInstance.current || !colorHeatmap.color_data) return;
+
+    // Create color-coded heatmap layer
+    const colorFeatures = [];
+    for (let y = 0; y < colorHeatmap.resolution; y++) {
+      for (let x = 0; x < colorHeatmap.resolution; x++) {
+        const cell = colorHeatmap.color_data[y][x];
+        if (cell.intensity > 0.1) { // Only show cells with significant intensity
+          colorFeatures.push({
+            type: 'Feature',
+            geometry: {
+              type: 'Point',
+              coordinates: [78.163 + x/1000, 29.9457 + y/1000]
+            },
+            properties: {
+              intensity: cell.intensity,
+              color: cell.color,
+              rgb: cell.rgb
+            }
+          });
+        }
+      }
+    }
+
+    if (colorFeatures.length > 0) {
+      // Add color-coded source
+      mapInstance.current.addSource(`color-heatmap-${zoneId}`, {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: colorFeatures
+        }
+      });
+
+      // Add color-coded layer
+      mapInstance.current.addLayer({
+        id: `color-heatmap-layer-${zoneId}`,
+        type: 'circle',
+        source: `color-heatmap-${zoneId}`,
+        paint: {
+          'circle-radius': 8,
+          'circle-color': ['get', 'color'],
+          'circle-opacity': 0.7,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#ffffff'
+        }
+      });
+    }
+  };
+
   const getCrowdColor = (level: string) => {
     switch (level) {
-      case "CRITICAL": return "#ef4444";
-      case "HIGH": return "#f59e0b";
-      case "MEDIUM": return "#8b5cf6";
-      case "LOW": return "#10b981";
+      case "CRITICAL": return "#ef4444"; // Red
+      case "HIGH": return "#f59e0b";     // Orange
+      case "MEDIUM": return "#8b5cf6";   // Purple
+      case "LOW": return "#10b981";      // Green
+      case "NONE": return "#6b7280";     // Gray
       default: return "#6b7280";
     }
+  };
+
+  const getCrowdColorWithOpacity = (level: string, opacity: number = 0.8) => {
+    const baseColor = getCrowdColor(level);
+    // Convert hex to rgba
+    const hex = baseColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   };
 
   const getZoneTypeIcon = (type: string) => {
     switch (type) {
       case 'ghat': return '🕉️';
-      case 'gate': return '';
+      case 'gate': return '🚪';
       case 'camp': return '⛺';
       case 'medical': return '🏥';
       case 'security': return '🛡️';
@@ -393,11 +521,49 @@ const LiveMap = () => {
 
       {/* Heatmap Controls */}
       {activeHeatmapZone && (
-        <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 space-y-2">
+        <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 space-y-2 max-w-xs">
           <h4 className="text-sm font-semibold">Active Heatmap</h4>
           <div className="text-xs text-muted-foreground">
             Zone: {zones.find(z => z.id === activeHeatmapZone)?.name}
           </div>
+          {(() => {
+            const zone = zones.find(z => z.id === activeHeatmapZone);
+            const heatmapData = zone?.heatmap_data;
+            return heatmapData ? (
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span>People Count:</span>
+                  <span className="font-medium">{heatmapData.total_people}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Density Level:</span>
+                  <Badge 
+                    variant="outline" 
+                    className={`text-xs ${getCrowdColor(activeHeatmapZone ? zones.find(z => z.id === activeHeatmapZone)?.density_level || 'NONE' : 'NONE')}`}
+                  >
+                    {heatmapData.density_level}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Hotspots:</span>
+                  <span className="font-medium">{heatmapData.hotspots?.length || 0}</span>
+                </div>
+                {heatmapData.color_heatmap && (
+                  <div className="pt-2 border-t">
+                    <div className="text-xs font-medium mb-1">Color Scale:</div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: heatmapData.color_heatmap.color_scale.low }}></div>
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: heatmapData.color_heatmap.color_scale.medium }}></div>
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: heatmapData.color_heatmap.color_scale.high }}></div>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {heatmapData.color_heatmap.color_scale.description}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null;
+          })()}
           <div className="flex items-center gap-2">
             <span className="text-xs">Opacity:</span>
             <input
@@ -422,24 +588,55 @@ const LiveMap = () => {
       )}
 
       {/* Crowd Levels Legend */}
-      <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 space-y-2">
+      <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 space-y-2 max-w-xs">
         <h4 className="text-sm font-semibold">Crowd Levels</h4>
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getCrowdColor("LOW") }}></div>
             <span>Low</span>
+            <span className="text-muted-foreground ml-auto">0-40%</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getCrowdColor("MEDIUM") }}></div>
             <span>Medium</span>
+            <span className="text-muted-foreground ml-auto">40-70%</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getCrowdColor("HIGH") }}></div>
             <span>High</span>
+            <span className="text-muted-foreground ml-auto">70-90%</span>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getCrowdColor("CRITICAL") }}></div>
             <span>Critical</span>
+            <span className="text-muted-foreground ml-auto">90%+</span>
+          </div>
+        </div>
+        
+        {/* Zone Status Summary */}
+        <div className="pt-2 border-t">
+          <div className="text-xs font-medium mb-1">Zone Status</div>
+          <div className="space-y-1 text-xs">
+            <div className="flex items-center justify-between">
+              <span>Total Zones:</span>
+              <span className="font-medium">{zones.length}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Active Cameras:</span>
+              <span className="font-medium">{zones.filter(z => z.current_occupancy > 0).length}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-red-600">Critical:</span>
+              <span className="font-medium text-red-600">
+                {zones.filter(z => z.density_level === 'CRITICAL').length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-orange-600">High:</span>
+              <span className="font-medium text-orange-600">
+                {zones.filter(z => z.density_level === 'HIGH').length}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -470,7 +667,38 @@ const LiveMap = () => {
               {zones.filter(z => z.density_level === 'CRITICAL').length}
             </span>
           </div>
+          <div className="flex items-center justify-between">
+            <span>High Density:</span>
+            <span className="font-medium text-orange-600">
+              {zones.filter(z => z.density_level === 'HIGH').length}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Medium Density:</span>
+            <span className="font-medium text-purple-600">
+              {zones.filter(z => z.density_level === 'MEDIUM').length}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>Low Density:</span>
+            <span className="font-medium text-green-600">
+              {zones.filter(z => z.density_level === 'LOW').length}
+            </span>
+          </div>
         </div>
+        
+        {/* Heatmap Status */}
+        {activeHeatmapZone && (
+          <div className="pt-2 border-t mt-2">
+            <div className="text-xs font-medium mb-1">Active Heatmap</div>
+            <div className="text-xs text-muted-foreground">
+              {zones.find(z => z.id === activeHeatmapZone)?.name}
+            </div>
+            <div className="text-xs text-primary">
+              Click marker to toggle
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

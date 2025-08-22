@@ -268,7 +268,7 @@ const Dashboard = () => {
                   <div className="text-center">
                     <div className="text-2xl font-bold text-accent">
                       {systemStatus.websocket_connections?.frames ? 
-                        Object.values(systemStatus.websocket_connections.frames).reduce((sum: number, count: any) => sum + (count as number), 0) : 
+                        Object.values(systemStatus.websocket_connections.frames as Record<string, number>).reduce((sum: number, count: number) => sum + count, 0) : 
                         0
                       }
                     </div>

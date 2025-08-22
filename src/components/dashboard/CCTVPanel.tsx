@@ -602,7 +602,9 @@ interface LiveFrame {
                     <span className="text-muted-foreground">People Count:</span>
                     <div className="flex items-center gap-1">
                       <Users className="w-4 h-4" />
-                      <span className="font-bold">{camera.people_count}</span>
+                      <span className={`font-bold ${getDensityColor(camera.density_level)}`}>
+                        {camera.people_count}
+                      </span>
                     </div>
                   </div>
 
@@ -621,12 +623,48 @@ interface LiveFrame {
                     </Badge>
                   </div>
                   
+                  {/* Density Indicator Bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        camera.density_level === 'CRITICAL' ? 'bg-red-500' :
+                        camera.density_level === 'HIGH' ? 'bg-orange-500' :
+                        camera.density_level === 'MEDIUM' ? 'bg-purple-500' :
+                        camera.density_level === 'LOW' ? 'bg-green-500' : 'bg-gray-500'
+                      }`}
+                      style={{ 
+                        width: `${Math.min((camera.people_count / camera.threshold) * 100, 100)}%` 
+                      }}
+                    ></div>
+                  </div>
+                  
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Last Update:</span>
                     <span className="text-xs">
                       {new Date(camera.last_update).toLocaleTimeString()}
                     </span>
                   </div>
+                  
+                  {/* Zone Status Indicator */}
+                  {camera.zone_id && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Zone Status:</span>
+                      <div className="flex items-center gap-1">
+                        <div className={`w-2 h-2 rounded-full ${
+                          camera.density_level === 'CRITICAL' ? 'bg-red-500 animate-pulse' :
+                          camera.density_level === 'HIGH' ? 'bg-orange-500' :
+                          camera.density_level === 'MEDIUM' ? 'bg-purple-500' :
+                          camera.density_level === 'LOW' ? 'bg-green-500' : 'bg-gray-500'
+                        }`}></div>
+                        <span className="text-xs font-medium">
+                          {camera.density_level === 'CRITICAL' ? 'Critical' :
+                           camera.density_level === 'HIGH' ? 'High' :
+                           camera.density_level === 'MEDIUM' ? 'Medium' :
+                           camera.density_level === 'LOW' ? 'Low' : 'None'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Camera Controls */}
