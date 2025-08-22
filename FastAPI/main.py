@@ -1293,6 +1293,8 @@ async def create_zone(zone_data: dict):
 @app.get("/zones")
 async def get_zones():
     """Get all zones"""
+    if not state.zones:
+        return []
     return list(state.zones.values())
 
 @app.get("/zones/{zone_id}")
@@ -1372,6 +1374,8 @@ async def create_team(team_data: dict):
 @app.get("/teams")
 async def get_teams():
     """Get all teams"""
+    if not state.teams:
+        return []
     return list(state.teams.values())
 
 @app.get("/teams/{team_id}")
@@ -1414,6 +1418,8 @@ async def delete_team(team_id: str):
 @app.get("/crowd-flow")
 async def get_crowd_flow_data():
     """Get crowd flow data for all zones"""
+    if not state.crowd_flow_data:
+        return []
     return list(state.crowd_flow_data.values())
 
 @app.get("/zones/{zone_id}/crowd-flow")
@@ -1424,8 +1430,14 @@ async def get_zone_crowd_flow(zone_id: str):
     return state.crowd_flow_data[zone_id]
 
 # Re-routing Suggestions Routes
+from pydantic import BaseModel
+
+class ReRoutingRequest(BaseModel):
+    from_zone_id: str
+    to_zone_id: str
+
 @app.get("/re-routing-suggestions")
-async def get_re_routing_suggestions(zone_id: str = None):
+async def get_re_routing_suggestions(zone_id: str = Query(None, description="Zone ID to get suggestions for")):
     """Get re-routing suggestions"""
     try:
         if zone_id:
@@ -1450,11 +1462,11 @@ async def get_re_routing_suggestions(zone_id: str = None):
         raise HTTPException(status_code=500, detail=f"Failed to get re-routing suggestions: {str(e)}")
 
 @app.post("/re-routing-suggestions/generate")
-async def generate_re_routing_suggestion(data: dict):
+async def generate_re_routing_suggestion(data: ReRoutingRequest):
     """Generate custom re-routing suggestion between two zones"""
     try:
-        from_zone_id = data["from_zone_id"]
-        to_zone_id = data["to_zone_id"]
+        from_zone_id = data.from_zone_id
+        to_zone_id = data.to_zone_id
         
         if from_zone_id not in state.crowd_flow_data or to_zone_id not in state.crowd_flow_data:
             raise HTTPException(status_code=404, detail="Zone not found")
