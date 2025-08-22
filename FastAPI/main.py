@@ -919,39 +919,8 @@ async def startup_event():
     
     # Initialize sample zones for testing
     sample_zones = [
-        {
-            "id": "zone_ghat_01",
-            "name": "Main Sacred Ghat",
-            "type": "ghat",
-            "coordinates": {"lng": 78.9629, "lat": 27.1767},
-            "capacity": 1000,
-            "description": "Primary religious bathing area",
-            "current_occupancy": 0,
-            "status": "active",
-            "created_at": datetime.now().isoformat() + "Z"
-        },
-        {
-            "id": "zone_gate_01",
-            "name": "North Entry Gate",
-            "type": "gate",
-            "coordinates": {"lng": 78.9630, "lat": 27.1768},
-            "capacity": 500,
-            "description": "Main northern entrance",
-            "current_occupancy": 0,
-            "status": "active",
-            "created_at": datetime.now().isoformat() + "Z"
-        },
-        {
-            "id": "zone_camp_01",
-            "name": "Pilgrim Camp A",
-            "type": "camp",
-            "coordinates": {"lng": 78.9628, "lat": 27.1766},
-            "capacity": 2000,
-            "description": "Accommodation for pilgrims",
-            "current_occupancy": 0,
-            "status": "active",
-            "created_at": datetime.now().isoformat() + "Z"
-        }
+
+
     ]
     
     for zone in sample_zones:

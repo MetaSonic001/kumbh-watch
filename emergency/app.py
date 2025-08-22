@@ -540,57 +540,348 @@ def send_to_dashboard(session):
         logger.error(f"Error sending data to dashboard: {str(e)}")
 
 # Testing and status endpoints
-@app.route("/test", methods=["GET", "POST"])
-def test_endpoint():
-    """Test endpoint to simulate conversation without Twilio"""
-    if request.method == "POST":
-        user_input = request.form.get("user_input")
-        if not user_input:
-            return jsonify({"error": "No user_input provided"}), 400
-            
-        test_session = get_or_create_session("test_session")
-        response = query_rag_system(user_input, test_session)
-        
-        return jsonify({
-            "response": response,
-            "user_info": test_session["user_info"],
-            "conversation_length": len(test_session["conversation_history"]),
-            "context": test_session.get("context", "general"),
-            "detected_emergency_type": test_session["user_info"].get("emergency_type"),
-            "detected_location": test_session["user_info"].get("location"),
-            "landmarks_mentioned": test_session["user_info"].get("landmarks_mentioned", [])
-        })
+# Test page for WebSocket connections
+@app.get("/test", response_class=HTMLResponse)
+async def get_test_page():
+    """Get test page for WebSocket connections"""
     
-    return """
+    html_content = """
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Voice Agent Test</title>
+        <title>Crowd Detection API Test</title>
         <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
-            input[type="text"] { width: 400px; padding: 10px; margin: 10px 0; }
-            button { padding: 10px 20px; background: #007cba; color: white; border: none; cursor: pointer; }
-            .response { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
+            body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
+            .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+            .section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+            button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            button:hover { background: #0056b3; }
+            .log { height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border: 1px solid #ddd; font-family: monospace; font-size: 12px; }
+            input, select { padding: 5px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
+            .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+            .connected { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+            .disconnected { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+            img { max-width: 100%; height: auto; border: 1px solid #ddd; }
         </style>
     </head>
     <body>
-        <h1>Voice Agent Test Interface</h1>
-        <form method="post">
-            <input type="text" name="user_input" placeholder="Type your message here..." required>
-            <br>
-            <button type="submit">Send</button>
-        </form>
-        
-        <h3>Sample Test Inputs:</h3>
-        <ul>
-            <li>"Hello, how are you?"</li>
-            <li>"I need help with something"</li>
-            <li>"Can you tell me about the weather?"</li>
-            <li>"Thank you, goodbye"</li>
-        </ul>
-    </body>
-    </html>
-    """
+        <div class="container">
+            <h1>🚨 Crowd Detection & Disaster Management API Test</h1>
+            
+            <div class="section">
+                <h2>📡 WebSocket Connections</h2>
+                <div>
+                    <button onclick="connectAlerts()">Connect to Alerts</button>
+                    <button onclick="connectFrames()">Connect to Frames</button>
+                    <button onclick="connectInstructions()">Connect to Instructions</button>
+                    <button onclick="disconnectAll()">Disconnect All</button>
+                </div>
+                <div id="connection-status" class="status disconnected">Not connected</div>
+            </div>
+            
+            <div class="section">
+                <h2>📹 Camera Control</h2>
+                <div>
+                    <input type="text" id="camera-id" placeholder="Camera ID (e.g., webcam_01)" value="test_camera">
+                    <input type="text" id="rtsp-url" placeholder="RTSP URL" value="rtsp://127.0.0.1:8554/live">
+                    <input type="number" id="threshold" placeholder="Threshold" value="20" min="1" max="100">
+                    <button onclick="startRTSP()">Start RTSP Monitoring</button>
+                    <button onclick="stopCamera()">Stop Camera</button>
+                </div>
+                <div>
+                    <input type="file" id="video-file" accept="video/*">
+                    <button onclick="uploadVideo()">Process Video</button>
+                </div>
+                <div>
+                    <input type="file" id="image-file" accept="image/*">
+                    <button onclick="uploadImage()">Analyze Image</button>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>🚨 Emergency Controls</h2>
+                <div>
+                    <select id="emergency-type">
+                        <option value="MEDICAL">Medical</option>
+                        <option value="FIRE">Fire</option>
+                        <option value="SECURITY">Security</option>
+                        <option value="EVACUATION">Evacuation</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                    <input type="text" id="emergency-message" placeholder="Emergency message" value="Test emergency alert">
+                    <input type="text" id="emergency-location" placeholder="Location" value="Test Location">
+                    <button onclick="sendEmergency()">Send Emergency Alert</button>
+                </div>
+                <div>
+                    <input type="text" id="instructions" placeholder="Emergency instructions" value="Please remain calm and follow exit signs">
+                    <button onclick="sendInstructions()">Send Instructions</button>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📊 System Status</h2>
+                <button onclick="getStatus()">Get Status</button>
+                <div id="status-display"></div>
+            </div>
+            
+            <div class="section">
+                <h2>🖼️ Live Feed</h2>
+                <div id="live-frame">
+                    <p>Connect to frames WebSocket to see live video</p>
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📝 Activity Log</h2>
+                <button onclick="clearLog()">Clear Log</button>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+
+        <script>
+            let alertsWs = null;
+            let framesWs = null;
+            let instructionsWs = null;
+            
+            function log(message) {
+                const logDiv = document.getElementById('log');
+                const timestamp = new Date().toLocaleTimeString();
+                logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+            
+            function clearLog() {
+                document.getElementById('log').innerHTML = '';
+            }
+            
+            function updateConnectionStatus() {
+                const status = document.getElementById('connection-status');
+                const connected = alertsWs?.readyState === WebSocket.OPEN || 
+                                framesWs?.readyState === WebSocket.OPEN || 
+                                instructionsWs?.readyState === WebSocket.OPEN;
+                
+                status.className = connected ? 'status connected' : 'status disconnected';
+                status.textContent = connected ? 'Connected to WebSocket(s)' : 'Not connected';
+            }
+            
+            function connectAlerts() {
+                if (alertsWs) alertsWs.close();
+                alertsWs = new WebSocket('ws://localhost:8000/ws/alerts');
+                
+                alertsWs.onopen = () => {
+                    log('✅ Connected to alerts WebSocket');
+                    updateConnectionStatus();
+                };
+                
+                alertsWs.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log(`📢 Alert: ${data.type} - ${data.message || 'No message'}`);
+                    if (data.type === 'LIVE_COUNT_UPDATE') {
+                        log(`👥 People count: ${data.current_count} (change: ${data.change >= 0 ? '+' : ''}${data.change})`);
+                    }
+                };
+                
+                alertsWs.onclose = () => {
+                    log('❌ Alerts WebSocket disconnected');
+                    updateConnectionStatus();
+                };
+                
+                alertsWs.onerror = (error) => {
+                    log(`❌ Alerts WebSocket error: ${error}`);
+                };
+            }
+            
+            function connectFrames() {
+                const cameraId = document.getElementById('camera-id').value || 'test_camera';
+                if (framesWs) framesWs.close();
+                framesWs = new WebSocket(`ws://localhost:8000/ws/frames/${cameraId}`);
+                
+                framesWs.onopen = () => {
+                    log(`✅ Connected to frames WebSocket for camera ${cameraId}`);
+                    updateConnectionStatus();
+                };
+                
+                framesWs.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'LIVE_FRAME') {
+                        const frameDiv = document.getElementById('live-frame');
+                        frameDiv.innerHTML = `
+                            <h4>Camera: ${data.camera_id} | People: ${data.people_count} | Density: ${data.density_level}</h4>
+                            <img src="${data.frame}" alt="Live Frame">
+                        `;
+                        log(`📹 Frame update: ${data.people_count} people, ${data.density_level} density`);
+                    } else {
+                        log(`📹 Frame: ${data.type}`);
+                    }
+                };
+                
+                framesWs.onclose = () => {
+                    log('❌ Frames WebSocket disconnected');
+                    updateConnectionStatus();
+                };
+            }
+            
+            function connectInstructions() {
+                if (instructionsWs) instructionsWs.close();
+                instructionsWs = new WebSocket('ws://localhost:8000/ws/instructions');
+                
+                instructionsWs.onopen = () => {
+                    log('✅ Connected to instructions WebSocket');
+                    updateConnectionStatus();
+                };
+                
+                instructionsWs.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log(`📋 Instructions: ${data.instructions || data.type}`);
+                };
+                
+                instructionsWs.onclose = () => {
+                    log('❌ Instructions WebSocket disconnected');
+                    updateConnectionStatus();
+                };
+            }
+            
+            function disconnectAll() {
+                if (alertsWs) alertsWs.close();
+                if (framesWs) framesWs.close();
+                if (instructionsWs) instructionsWs.close();
+                log('🔌 Disconnected all WebSockets');
+                updateConnectionStatus();
+            }
+            
+            async function startRTSP() {
+                const cameraId = document.getElementById('camera-id').value;
+                const rtspUrl = document.getElementById('rtsp-url').value;
+                const threshold = document.getElementById('threshold').value;
+                
+                try {
+                    const response = await fetch(`/monitor/rtsp?camera_id=${cameraId}&rtsp_url=${encodeURIComponent(rtspUrl)}&threshold=${threshold}`, {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    log(`📹 Started RTSP monitoring: ${result.message}`);
+                } catch (error) {
+                    log(`❌ Error starting RTSP: ${error}`);
+                }
+            }
+            
+            async function stopCamera() {
+                const cameraId = document.getElementById('camera-id').value;
+                try {
+                    const response = await fetch(`/camera/${cameraId}/stop`, { method: 'POST' });
+                    const result = await response.json();
+                    log(`🛑 Stopped camera: ${result.message}`);
+                } catch (error) {
+                    log(`❌ Error stopping camera: ${error}`);
+                }
+            }
+            
+            async function uploadVideo() {
+                const fileInput = document.getElementById('video-file');
+                const cameraId = document.getElementById('camera-id').value;
+                const threshold = document.getElementById('threshold').value;
+                
+                if (!fileInput.files[0]) {
+                    log('❌ Please select a video file');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                try {
+                    const response = await fetch(`/process/video?camera_id=${cameraId}&threshold=${threshold}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    log(`📹 Video processing started: ${result.message}`);
+                } catch (error) {
+                    log(`❌ Error uploading video: ${error}`);
+                }
+            }
+            
+            async function uploadImage() {
+                const fileInput = document.getElementById('image-file');
+                
+                if (!fileInput.files[0]) {
+                    log('❌ Please select an image file');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                try {
+                    const response = await fetch('/process/image', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+                    log(`📷 Image analysis: ${result.people_count} people detected`);
+                    
+                    // Show result image
+                    const frameDiv = document.getElementById('live-frame');
+                    frameDiv.innerHTML = `
+                        <h4>Image Analysis Result: ${result.people_count} people detected</h4>
+                        <img src="${result.annotated_image}" alt="Analyzed Image">
+                    `;
+                } catch (error) {
+                    log(`❌ Error analyzing image: ${error}`);
+                }
+            }
+            
+            async function sendEmergency() {
+                const type = document.getElementById('emergency-type').value;
+                const message = document.getElementById('emergency-message').value;
+                const location = document.getElementById('emergency-location').value;
+                
+                try {
+                    const response = await fetch(`/emergency?emergency_type=${type}&message=${encodeURIComponent(message)}&location=${encodeURIComponent(location)}&priority=HIGH`, {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    log(`🚨 Emergency alert sent: ${result.message}`);
+                } catch (error) {
+                    log(`❌ Error sending emergency: ${error}`);
+                }
+            }
+            
+            async function sendInstructions() {
+                const instructions = document.getElementById('instructions').value;
+                
+                try {
+                    const response = await fetch(`/instructions?instructions=${encodeURIComponent(instructions)}&priority=HIGH`, {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    log(`📋 Instructions sent: ${result.message}`);
+} catch (error) {
+                log(`❌ Error sending instructions: ${error}`);
+            }
+        }
+            
+        async function getStatus() {
+            try {
+                const response = await fetch('/status');
+                const result = await response.json();
+                    
+                document.getElementById('status-display').innerHTML = `
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                `;
+                log(`📊 System status retrieved`);
+            } catch (error) {
+                log(`❌ Error getting status: ${error}`);
+            }
+        }
+            
+        // Initialize
+        log('🚀 Test page loaded. Connect to WebSockets to start receiving data.');
+    </script>
+</body>
+</html>
+"""
+    return html_content
 
 @app.route("/status", methods=["GET"])
 def status():
