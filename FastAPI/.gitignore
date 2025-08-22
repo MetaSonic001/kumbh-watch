@@ -1,0 +1,57 @@
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# PyTorch / TensorFlow / ML artifacts
+*.pt
+*.pth
+*.h5
+*.ckpt
+*.t7
+*.pkl
+*.joblib
+*.npy
+*.npz
+
+# YOLO / Ultralytics
+runs/
+weights/
+*.weights
+*.yaml
+*.pt
+*.onnx
+
+# Dataset files
+data/
+*.csv
+*.json
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+logs/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.tmp
+*.cache
