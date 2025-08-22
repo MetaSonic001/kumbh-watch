@@ -1186,6 +1186,17 @@ async def root():
         }
     }
 
+@app.get("/health")
+async def health_check():
+    """Simple health check endpoint"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat() + "Z",
+        "zones_count": len(state.zones),
+        "cameras_count": len(state.frame_processors),
+        "models_loaded": bool(state.models)
+    }
+
 # Enhanced Camera-Zone Association
 @app.post("/monitor/rtsp")
 async def start_rtsp_monitoring(
@@ -1666,7 +1677,7 @@ async def get_zones_with_heatmap():
             crowd_data = state.crowd_flow_data.get(zone_id, {})
             
             zone_heatmap = {
-                "zone_id": zone_id,
+                "id": zone_id,
                 "name": zone["name"],
                 "type": zone["type"],
                 "coordinates": zone["coordinates"],
@@ -1674,7 +1685,10 @@ async def get_zones_with_heatmap():
                 "current_occupancy": crowd_data.get("people_count", 0),
                 "density_level": crowd_data.get("density_level", "LOW"),
                 "heatmap_data": zone.get("heatmap_data", {}),
-                "crowd_flow": crowd_data
+                "crowd_flow": crowd_data,
+                "description": zone.get("description", ""),
+                "status": zone.get("status", "active"),
+                "created_at": zone.get("created_at", "")
             }
             zones_with_heatmap.append(zone_heatmap)
         
