@@ -117,6 +117,16 @@ class GlobalState:
         self.frame_processors: Dict[str, 'FrameProcessor'] = {}
         self.last_alerts: Dict[str, float] = {}
         self.camera_configs: Dict[str, dict] = {}
+        # New: Zone and team management
+        self.zones: Dict[str, dict] = {}
+        self.teams: Dict[str, dict] = {}
+        # New: Crowd flow data storage
+        self.crowd_flow_data: Dict[str, dict] = {}
+        # New: Re-routing suggestions cache
+        self.re_routing_cache: Dict[str, dict] = {}
+        # New: Alert deduplication with content hashing
+        self.alert_content_hash: Dict[str, str] = {}
+        self.alert_last_sent: Dict[str, float] = {}
 
 state = GlobalState()
 
@@ -157,10 +167,11 @@ async def load_models():
         raise
 
 class FrameProcessor:
-    def __init__(self, camera_id: str, source: str, threshold: int = 20):
+    def __init__(self, camera_id: str, source: str, threshold: int = 20, zone_id: str = None):
         self.camera_id = camera_id
         self.source = source
         self.threshold = threshold
+        self.zone_id = zone_id
         self.is_running = False
         self.frame_queue = deque(maxlen=CONFIG['processing']['max_frame_queue'])
         self.last_count = 0
@@ -430,6 +441,25 @@ class FrameProcessor:
         """Handle the analysis results - send alerts and broadcast data"""
         current_time = time.time()
         
+        # Update zone crowd flow data if camera is associated with a zone
+        if self.zone_id and self.zone_id in state.crowd_flow_data:
+            zone_data = state.crowd_flow_data[self.zone_id]
+            zone_data["people_count"] = analysis.people_count
+            zone_data["current_occupancy"] = analysis.people_count
+            zone_data["occupancy_percentage"] = (analysis.people_count / zone_data["capacity"]) * 100
+            zone_data["density_level"] = analysis.density_level
+            zone_data["last_update"] = datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
+            
+            # Determine trend based on previous count
+            if hasattr(self, 'last_zone_count'):
+                if analysis.people_count > self.last_zone_count:
+                    zone_data["trend"] = "increasing"
+                elif analysis.people_count < self.last_zone_count:
+                    zone_data["trend"] = "decreasing"
+                else:
+                    zone_data["trend"] = "stable"
+            self.last_zone_count = analysis.people_count
+        
         # Check for threshold breach
         if analysis.people_count != self.last_count:
             # Send live count update
@@ -445,53 +475,52 @@ class FrameProcessor:
                 "threshold_status": "EXCEEDED" if analysis.people_count > self.threshold else "NORMAL"
             }
             
-            await self._broadcast_to_websockets("alerts", count_update)
+            # Use improved alert deduplication for live count updates
+            content_hash = _create_content_hash(count_update)
+            if _should_send_alert("LIVE_COUNT_UPDATE", self.camera_id, content_hash, 2.0):  # 2 second debounce for live updates
+                await self._broadcast_to_websockets("alerts", count_update)
             
             # Check for threshold breach alert
             if analysis.people_count > self.threshold:
-                alert_key = f"threshold_{self.camera_id}"
-                if alert_key not in state.last_alerts or \
-                   current_time - state.last_alerts[alert_key] > CONFIG['processing']['alert_debounce_time']:
-                    
-                    threshold_alert = {
-                        "type": "THRESHOLD_BREACH",
-                        "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
-                        "camera_id": self.camera_id,
-                        "severity": "HIGH" if analysis.people_count > self.threshold * 1.2 else "MEDIUM",
-                        "message": f"People count ({analysis.people_count}) exceeds threshold ({self.threshold})",
-                        "people_count": analysis.people_count,
-                        "threshold": self.threshold,
-                        "density_level": analysis.density_level,
-                        "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
-                    }
-                    
-                    await self._broadcast_to_websockets("alerts", threshold_alert)
-                    state.last_alerts[alert_key] = current_time
-            
-            self.last_count = analysis.people_count
-        
-        # Send anomaly alerts
-        for anomaly in analysis.anomalies:
-            alert_key = f"anomaly_{anomaly['type']}_{self.camera_id}"
-            if alert_key not in state.last_alerts or \
-               current_time - state.last_alerts[alert_key] > CONFIG['processing']['alert_debounce_time']:
-                
-                anomaly_alert = {
-                    "type": "ANOMALY_ALERT",
+                threshold_alert = {
+                    "type": "THRESHOLD_BREACH",
                     "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
                     "camera_id": self.camera_id,
-                    "anomaly_type": anomaly['type'],
-                    "severity": anomaly['severity'],
-                    "message": anomaly['message'],
-                    "location": anomaly['location'],
-                    "confidence": anomaly.get('confidence', 0.0),
+                    "severity": "HIGH" if analysis.people_count > self.threshold * 1.2 else "MEDIUM",
+                    "message": f"People count ({analysis.people_count}) exceeds threshold ({self.threshold})",
+                    "people_count": analysis.people_count,
+                    "threshold": self.threshold,
+                    "density_level": analysis.density_level,
                     "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
                 }
                 
-                await self._broadcast_to_websockets("alerts", anomaly_alert)
-                state.last_alerts[alert_key] = current_time
+                # Use improved alert deduplication for threshold breaches
+                content_hash = _create_content_hash(threshold_alert)
+                if _should_send_alert("THRESHOLD_BREACH", self.camera_id, content_hash, 10.0):  # 10 second debounce for threshold alerts
+                    await self._broadcast_to_websockets("alerts", threshold_alert)
+            
+            self.last_count = analysis.people_count
         
-        # Send heatmap data
+        # Send anomaly alerts with improved deduplication
+        for anomaly in analysis.anomalies:
+            anomaly_alert = {
+                "type": "ANOMALY_ALERT",
+                "id": f"alert_{int(current_time * 1000)}_{uuid.uuid4().hex[:8]}",
+                "camera_id": self.camera_id,
+                "anomaly_type": anomaly['type'],
+                "severity": anomaly['severity'],
+                "message": anomaly['message'],
+                "location": anomaly['location'],
+                "confidence": anomaly.get('confidence', 0.0),
+                "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
+            }
+            
+            # Use improved alert deduplication for anomalies
+            content_hash = _create_content_hash(anomaly_alert)
+            if _should_send_alert("ANOMALY_ALERT", self.camera_id, content_hash, 15.0):  # 15 second debounce for anomalies
+                await self._broadcast_to_websockets("alerts", anomaly_alert)
+        
+        # Send heatmap data with improved deduplication
         if analysis.heatmap_data:
             heatmap_alert = {
                 "type": "HEATMAP_ALERT",
@@ -502,7 +531,10 @@ class FrameProcessor:
                 "timestamp": datetime.fromtimestamp(analysis.timestamp).isoformat() + "Z"
             }
             
-            await self._broadcast_to_websockets("alerts", heatmap_alert)
+            # Use improved alert deduplication for heatmaps
+            content_hash = _create_content_hash(heatmap_alert)
+            if _should_send_alert("HEATMAP_ALERT", self.camera_id, content_hash, 5.0):  # 5 second debounce for heatmaps
+                await self._broadcast_to_websockets("alerts", heatmap_alert)
         
         # Send live frame if there are subscribers
         if self.camera_id in state.websocket_connections["frames"] and \
@@ -606,6 +638,85 @@ async def startup_event():
     """Initialize the application"""
     print("🚀 Starting Crowd Detection & Disaster Management API...")
     await load_models()
+    
+    # Initialize sample zones for testing
+    sample_zones = [
+        {
+            "id": "zone_ghat_01",
+            "name": "Main Sacred Ghat",
+            "type": "ghat",
+            "coordinates": {"lng": 78.9629, "lat": 27.1767},
+            "capacity": 1000,
+            "description": "Primary religious bathing area",
+            "current_occupancy": 0,
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        },
+        {
+            "id": "zone_gate_01",
+            "name": "North Entry Gate",
+            "type": "gate",
+            "coordinates": {"lng": 78.9630, "lat": 27.1768},
+            "capacity": 500,
+            "description": "Main northern entrance",
+            "current_occupancy": 0,
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        },
+        {
+            "id": "zone_camp_01",
+            "name": "Pilgrim Camp A",
+            "type": "camp",
+            "coordinates": {"lng": 78.9628, "lat": 27.1766},
+            "capacity": 2000,
+            "description": "Accommodation for pilgrims",
+            "current_occupancy": 0,
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        }
+    ]
+    
+    for zone in sample_zones:
+        state.zones[zone["id"]] = zone
+        # Initialize crowd flow data
+        state.crowd_flow_data[zone["id"]] = {
+            "zone_id": zone["id"],
+            "zone_name": zone["name"],
+            "current_occupancy": 0,
+            "capacity": zone["capacity"],
+            "occupancy_percentage": 0.0,
+            "people_count": 0,
+            "density_level": "LOW",
+            "trend": "stable",
+            "last_update": datetime.now().isoformat() + "Z"
+        }
+    
+    # Initialize sample teams for testing
+    sample_teams = [
+        {
+            "id": "team_security_01",
+            "name": "Security Team Alpha",
+            "role": "security",
+            "zone_id": "zone_gate_01",
+            "contact": "+91-98765-43210",
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        },
+        {
+            "id": "team_medical_01",
+            "name": "Medical Team Bravo",
+            "role": "medical",
+            "zone_id": "zone_ghat_01",
+            "contact": "+91-98765-43211",
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        }
+    ]
+    
+    for team in sample_teams:
+        state.teams[team["id"]] = team
+    
+    print("✅ Sample zones and teams initialized")
     print("✅ API ready for crowd monitoring!")
 
 @app.on_event("shutdown")
@@ -710,11 +821,43 @@ async def root():
         "message": "Crowd Detection & Disaster Management API",
         "version": "1.0.0",
         "endpoints": {
-            "start_rtsp_monitoring": "/monitor/rtsp",
-            "process_video": "/process/video",
-            "send_emergency": "/emergency",
-            "send_instructions": "/instructions",
-            "get_status": "/status",
+            "zones": {
+                "create": "POST /zones",
+                "get_all": "GET /zones",
+                "get_one": "GET /zones/{zone_id}",
+                "update": "PUT /zones/{zone_id}",
+                "delete": "DELETE /zones/{zone_id}"
+            },
+            "teams": {
+                "create": "POST /teams",
+                "get_all": "GET /teams",
+                "get_one": "GET /teams/{team_id}",
+                "update": "PUT /teams/{team_id}",
+                "delete": "DELETE /teams/{team_id}"
+            },
+            "cameras": {
+                "start_rtsp": "POST /monitor/rtsp",
+                "process_video": "POST /process/video",
+                "get_all": "GET /cameras",
+                "get_config": "GET /camera/{camera_id}/config",
+                "stop": "POST /camera/{camera_id}/stop",
+                "update_threshold": "POST /camera/{camera_id}/threshold"
+            },
+            "crowd_flow": {
+                "get_all": "GET /crowd-flow",
+                "get_zone": "GET /zones/{zone_id}/crowd-flow"
+            },
+            "re_routing": {
+                "get_suggestions": "GET /re-routing-suggestions",
+                "generate": "POST /re-routing-suggestions/generate"
+            },
+            "emergency": {
+                "send_alert": "POST /emergency",
+                "send_instructions": "POST /instructions"
+            },
+            "system": {
+                "status": "GET /status"
+            },
             "websockets": {
                 "alerts": "/ws/alerts",
                 "frames": "/ws/frames/{camera_id}",
@@ -723,7 +866,8 @@ async def root():
         },
         "testing": {
             "rtsp_example": "ffmpeg -f dshow -rtbufsize 200M -i video=\"USB2.0 HD UVC WebCam\" -an -vf scale=1280:720 -r 15 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://127.0.0.1:8554/live",
-            "websocket_test": "Connect to ws://localhost:8000/ws/alerts to receive real-time alerts"
+            "websocket_test": "Connect to ws://localhost:8000/ws/alerts to receive real-time alerts",
+            "sample_data": "Sample zones and teams are automatically created on startup"
         }
     }
 
@@ -731,7 +875,8 @@ async def root():
 async def start_rtsp_monitoring(
     camera_id: str = Query(..., description="Unique camera identifier"),
     rtsp_url: str = Query(..., description="RTSP stream URL"),
-    threshold: int = Query(20, description="People count threshold for alerts")
+    threshold: int = Query(20, description="People count threshold for alerts"),
+    zone_id: str = Query(None, description="Zone ID this camera is monitoring")
 ):
     """Start monitoring an RTSP stream"""
     
@@ -742,13 +887,14 @@ async def start_rtsp_monitoring(
     
     try:
         # Create and start new processor
-        processor = FrameProcessor(camera_id, rtsp_url, threshold)
+        processor = FrameProcessor(camera_id, rtsp_url, threshold, zone_id)
         processor.start()
         
         state.frame_processors[camera_id] = processor
         state.camera_configs[camera_id] = {
             "source": rtsp_url,
             "threshold": threshold,
+            "zone_id": zone_id,
             "started_at": datetime.now().isoformat(),
             "status": "active"
         }
@@ -759,6 +905,7 @@ async def start_rtsp_monitoring(
             "camera_id": camera_id,
             "rtsp_url": rtsp_url,
             "threshold": threshold,
+            "zone_id": zone_id,
             "websocket_endpoints": {
                 "alerts": f"/ws/alerts",
                 "frames": f"/ws/frames/{camera_id}"
@@ -772,6 +919,7 @@ async def start_rtsp_monitoring(
 async def process_video_file(
     camera_id: str = Query(..., description="Unique camera identifier for this video"),
     threshold: int = Query(20, description="People count threshold for alerts"),
+    zone_id: str = Query(None, description="Zone ID this camera is monitoring"),
     file: UploadFile = File(..., description="Video file to process")
 ):
     """Process an uploaded video file for crowd detection"""
@@ -794,13 +942,14 @@ async def process_video_file(
             del state.frame_processors[camera_id]
         
         # Create and start processor for video file
-        processor = FrameProcessor(camera_id, temp_file_path, threshold)
+        processor = FrameProcessor(camera_id, temp_file_path, threshold, zone_id)
         processor.start()
         
         state.frame_processors[camera_id] = processor
         state.camera_configs[camera_id] = {
             "source": f"video_file_{file.filename}",
             "threshold": threshold,
+            "zone_id": zone_id,
             "started_at": datetime.now().isoformat(),
             "status": "active",
             "file_name": file.filename
@@ -811,6 +960,7 @@ async def process_video_file(
             "message": f"Started processing video {file.filename}",
             "camera_id": camera_id,
             "threshold": threshold,
+            "zone_id": zone_id,
             "file_info": {
                 "filename": file.filename,
                 "size": len(content),
@@ -1098,399 +1248,363 @@ async def update_camera_threshold(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update threshold: {str(e)}")
 
-# Test page for WebSocket connections
-@app.get("/test", response_class=HTMLResponse)
-async def get_test_page():
-    """Get test page for WebSocket connections"""
-    
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Crowd Detection API Test</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
-            .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-            .section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-            button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            button:hover { background: #0056b3; }
-            .log { height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border: 1px solid #ddd; font-family: monospace; font-size: 12px; }
-            input, select { padding: 5px; margin: 5px; border: 1px solid #ddd; border-radius: 3px; }
-            .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
-            .connected { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
-            .disconnected { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-            img { max-width: 100%; height: auto; border: 1px solid #ddd; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🚨 Crowd Detection & Disaster Management API Test</h1>
-            
-            <div class="section">
-                <h2>📡 WebSocket Connections</h2>
-                <div>
-                    <button onclick="connectAlerts()">Connect to Alerts</button>
-                    <button onclick="connectFrames()">Connect to Frames</button>
-                    <button onclick="connectInstructions()">Connect to Instructions</button>
-                    <button onclick="disconnectAll()">Disconnect All</button>
-                </div>
-                <div id="connection-status" class="status disconnected">Not connected</div>
-            </div>
-            
-            <div class="section">
-                <h2>📹 Camera Control</h2>
-                <div>
-                    <input type="text" id="camera-id" placeholder="Camera ID (e.g., webcam_01)" value="test_camera">
-                    <input type="text" id="rtsp-url" placeholder="RTSP URL" value="rtsp://127.0.0.1:8554/live">
-                    <input type="number" id="threshold" placeholder="Threshold" value="20" min="1" max="100">
-                    <button onclick="startRTSP()">Start RTSP Monitoring</button>
-                    <button onclick="stopCamera()">Stop Camera</button>
-                </div>
-                <div>
-                    <input type="file" id="video-file" accept="video/*">
-                    <button onclick="uploadVideo()">Process Video</button>
-                </div>
-                <div>
-                    <input type="file" id="image-file" accept="image/*">
-                    <button onclick="uploadImage()">Analyze Image</button>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>🚨 Emergency Controls</h2>
-                <div>
-                    <select id="emergency-type">
-                        <option value="MEDICAL">Medical</option>
-                        <option value="FIRE">Fire</option>
-                        <option value="SECURITY">Security</option>
-                        <option value="EVACUATION">Evacuation</option>
-                        <option value="OTHER">Other</option>
-                    </select>
-                    <input type="text" id="emergency-message" placeholder="Emergency message" value="Test emergency alert">
-                    <input type="text" id="emergency-location" placeholder="Location" value="Test Location">
-                    <button onclick="sendEmergency()">Send Emergency Alert</button>
-                </div>
-                <div>
-                    <input type="text" id="instructions" placeholder="Emergency instructions" value="Please remain calm and follow exit signs">
-                    <button onclick="sendInstructions()">Send Instructions</button>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>📊 System Status</h2>
-                <button onclick="getStatus()">Get Status</button>
-                <div id="status-display"></div>
-            </div>
-            
-            <div class="section">
-                <h2>🖼️ Live Feed</h2>
-                <div id="live-frame">
-                    <p>Connect to frames WebSocket to see live video</p>
-                </div>
-            </div>
-            
-            <div class="section">
-                <h2>📝 Activity Log</h2>
-                <button onclick="clearLog()">Clear Log</button>
-                <div id="log" class="log"></div>
-            </div>
-        </div>
+# ============================================================================
+# NEW ROUTES FOR BACKEND SERVICE INTEGRATION
+# ============================================================================
 
-        <script>
-            let alertsWs = null;
-            let framesWs = null;
-            let instructionsWs = null;
-            
-            function log(message) {
-                const logDiv = document.getElementById('log');
-                const timestamp = new Date().toLocaleTimeString();
-                logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
-                logDiv.scrollTop = logDiv.scrollHeight;
-            }
-            
-            function clearLog() {
-                document.getElementById('log').innerHTML = '';
-            }
-            
-            function updateConnectionStatus() {
-                const status = document.getElementById('connection-status');
-                const connected = alertsWs?.readyState === WebSocket.OPEN || 
-                                framesWs?.readyState === WebSocket.OPEN || 
-                                instructionsWs?.readyState === WebSocket.OPEN;
-                
-                status.className = connected ? 'status connected' : 'status disconnected';
-                status.textContent = connected ? 'Connected to WebSocket(s)' : 'Not connected';
-            }
-            
-            function connectAlerts() {
-                if (alertsWs) alertsWs.close();
-                alertsWs = new WebSocket('ws://localhost:8000/ws/alerts');
-                
-                alertsWs.onopen = () => {
-                    log('✅ Connected to alerts WebSocket');
-                    updateConnectionStatus();
-                };
-                
-                alertsWs.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    log(`📢 Alert: ${data.type} - ${data.message || 'No message'}`);
-                    if (data.type === 'LIVE_COUNT_UPDATE') {
-                        log(`👥 People count: ${data.current_count} (change: ${data.change >= 0 ? '+' : ''}${data.change})`);
-                    }
-                };
-                
-                alertsWs.onclose = () => {
-                    log('❌ Alerts WebSocket disconnected');
-                    updateConnectionStatus();
-                };
-                
-                alertsWs.onerror = (error) => {
-                    log(`❌ Alerts WebSocket error: ${error}`);
-                };
-            }
-            
-            function connectFrames() {
-                const cameraId = document.getElementById('camera-id').value || 'test_camera';
-                if (framesWs) framesWs.close();
-                framesWs = new WebSocket(`ws://localhost:8000/ws/frames/${cameraId}`);
-                
-                framesWs.onopen = () => {
-                    log(`✅ Connected to frames WebSocket for camera ${cameraId}`);
-                    updateConnectionStatus();
-                };
-                
-                framesWs.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'LIVE_FRAME') {
-                        const frameDiv = document.getElementById('live-frame');
-                        frameDiv.innerHTML = `
-                            <h4>Camera: ${data.camera_id} | People: ${data.people_count} | Density: ${data.density_level}</h4>
-                            <img src="${data.frame}" alt="Live Frame">
-                        `;
-                        log(`📹 Frame update: ${data.people_count} people, ${data.density_level} density`);
-                    } else {
-                        log(`📹 Frame: ${data.type}`);
-                    }
-                };
-                
-                framesWs.onclose = () => {
-                    log('❌ Frames WebSocket disconnected');
-                    updateConnectionStatus();
-                };
-            }
-            
-            function connectInstructions() {
-                if (instructionsWs) instructionsWs.close();
-                instructionsWs = new WebSocket('ws://localhost:8000/ws/instructions');
-                
-                instructionsWs.onopen = () => {
-                    log('✅ Connected to instructions WebSocket');
-                    updateConnectionStatus();
-                };
-                
-                instructionsWs.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    log(`📋 Instructions: ${data.instructions || data.type}`);
-                };
-                
-                instructionsWs.onclose = () => {
-                    log('❌ Instructions WebSocket disconnected');
-                    updateConnectionStatus();
-                };
-            }
-            
-            function disconnectAll() {
-                if (alertsWs) alertsWs.close();
-                if (framesWs) framesWs.close();
-                if (instructionsWs) instructionsWs.close();
-                log('🔌 Disconnected all WebSockets');
-                updateConnectionStatus();
-            }
-            
-            async function startRTSP() {
-                const cameraId = document.getElementById('camera-id').value;
-                const rtspUrl = document.getElementById('rtsp-url').value;
-                const threshold = document.getElementById('threshold').value;
-                
-                try {
-                    const response = await fetch(`/monitor/rtsp?camera_id=${cameraId}&rtsp_url=${encodeURIComponent(rtspUrl)}&threshold=${threshold}`, {
-                        method: 'POST'
-                    });
-                    const result = await response.json();
-                    log(`📹 Started RTSP monitoring: ${result.message}`);
-                } catch (error) {
-                    log(`❌ Error starting RTSP: ${error}`);
-                }
-            }
-            
-            async function stopCamera() {
-                const cameraId = document.getElementById('camera-id').value;
-                try {
-                    const response = await fetch(`/camera/${cameraId}/stop`, { method: 'POST' });
-                    const result = await response.json();
-                    log(`🛑 Stopped camera: ${result.message}`);
-                } catch (error) {
-                    log(`❌ Error stopping camera: ${error}`);
-                }
-            }
-            
-            async function uploadVideo() {
-                const fileInput = document.getElementById('video-file');
-                const cameraId = document.getElementById('camera-id').value;
-                const threshold = document.getElementById('threshold').value;
-                
-                if (!fileInput.files[0]) {
-                    log('❌ Please select a video file');
-                    return;
-                }
-                
-                const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
-                
-                try {
-                    const response = await fetch(`/process/video?camera_id=${cameraId}&threshold=${threshold}`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const result = await response.json();
-                    log(`📹 Video processing started: ${result.message}`);
-                } catch (error) {
-                    log(`❌ Error uploading video: ${error}`);
-                }
-            }
-            
-            async function uploadImage() {
-                const fileInput = document.getElementById('image-file');
-                
-                if (!fileInput.files[0]) {
-                    log('❌ Please select an image file');
-                    return;
-                }
-                
-                const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
-                
-                try {
-                    const response = await fetch('/process/image', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const result = await response.json();
-                    log(`📷 Image analysis: ${result.people_count} people detected`);
-                    
-                    // Show result image
-                    const frameDiv = document.getElementById('live-frame');
-                    frameDiv.innerHTML = `
-                        <h4>Image Analysis Result: ${result.people_count} people detected</h4>
-                        <img src="${result.annotated_image}" alt="Analyzed Image">
-                    `;
-                } catch (error) {
-                    log(`❌ Error analyzing image: ${error}`);
-                }
-            }
-            
-            async function sendEmergency() {
-                const type = document.getElementById('emergency-type').value;
-                const message = document.getElementById('emergency-message').value;
-                const location = document.getElementById('emergency-location').value;
-                
-                try {
-                    const response = await fetch(`/emergency?emergency_type=${type}&message=${encodeURIComponent(message)}&location=${encodeURIComponent(location)}&priority=HIGH`, {
-                        method: 'POST'
-                    });
-                    const result = await response.json();
-                    log(`🚨 Emergency alert sent: ${result.message}`);
-                } catch (error) {
-                    log(`❌ Error sending emergency: ${error}`);
-                }
-            }
-            
-            async function sendInstructions() {
-                const instructions = document.getElementById('instructions').value;
-                
-                try {
-                    const response = await fetch(`/instructions?instructions=${encodeURIComponent(instructions)}&priority=HIGH`, {
-                        method: 'POST'
-                    });
-                    const result = await response.json();
-                    log(`📋 Instructions sent: ${result.message}`);
-                } catch (error) {
-                    log(`❌ Error sending instructions: ${error}`);
-                }
-            }
-            
-            async function getStatus() {
-                try {
-                    const response = await fetch('/status');
-                    const result = await response.json();
-                    
-                    document.getElementById('status-display').innerHTML = `
-                        <pre>${JSON.stringify(result, null, 2)}</pre>
-                    `;
-                    log(`📊 System status retrieved`);
-                } catch (error) {
-                    log(`❌ Error getting status: ${error}`);
-                }
-            }
-            
-            // Initialize
-            log('🚀 Test page loaded. Connect to WebSockets to start receiving data.');
-        </script>
-    </body>
-    </html>
-    """
-    return html_content
+# Zone Management Routes
+@app.post("/zones")
+async def create_zone(zone_data: dict):
+    """Create a new zone"""
+    try:
+        zone_id = str(uuid.uuid4())
+        zone = {
+            "id": zone_id,
+            "name": zone_data["name"],
+            "type": zone_data["type"],
+            "coordinates": zone_data["coordinates"],
+            "capacity": zone_data["capacity"],
+            "description": zone_data["description"],
+            "current_occupancy": 0,
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        }
+        
+        state.zones[zone_id] = zone
+        
+        # Initialize crowd flow data for this zone
+        state.crowd_flow_data[zone_id] = {
+            "zone_id": zone_id,
+            "zone_name": zone["name"],
+            "current_occupancy": 0,
+            "capacity": zone["capacity"],
+            "occupancy_percentage": 0.0,
+            "people_count": 0,
+            "density_level": "LOW",
+            "trend": "stable",
+            "last_update": datetime.now().isoformat() + "Z"
+        }
+        
+        return zone
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create zone: {str(e)}")
 
-# Main execution
-if __name__ == "__main__":
-    print("🚀 Starting Crowd Detection & Disaster Management API...")
-    print("\n📚 API Documentation:")
-    print("=" * 60)
-    print("🌐 Main API: http://localhost:8000")
-    print("🧪 Test Page: http://localhost:8000/test")
-    print("📖 Docs: http://localhost:8000/docs")
-    print("\n📡 WebSocket Endpoints:")
-    print("   • Alerts: ws://localhost:8000/ws/alerts")
-    print("   • Frames: ws://localhost:8000/ws/frames/{camera_id}")
-    print("   • Instructions: ws://localhost:8000/ws/instructions")
-    print("\n🎯 API Endpoints:")
-    print("   • POST /monitor/rtsp - Start RTSP monitoring")
-    print("   • POST /process/video - Process video file")
-    print("   • POST /process/image - Analyze single image")
-    print("   • POST /emergency - Send emergency alert")
-    print("   • POST /instructions - Broadcast instructions")
-    print("   • GET /status - System status")
-    print("   • POST /camera/{id}/stop - Stop camera")
-    print("   • GET /camera/{id}/config - Get camera config")
-    print("   • POST /camera/{id}/threshold - Update threshold")
-    print("\n🧪 Testing Guide:")
-    print("=" * 60)
-    print("1. Start your RTSP stream:")
-    print("   ffmpeg -f dshow -rtbufsize 200M -i video=\"USB2.0 HD UVC WebCam\" \\")
-    print("          -an -vf scale=1280:720 -r 15 -c:v libx264 -preset ultrafast \\")
-    print("          -tune zerolatency -f rtsp rtsp://127.0.0.1:8554/live")
-    print("\n2. Open test page: http://localhost:8000/test")
-    print("\n3. Connect to WebSockets and start monitoring")
-    print("\n4. Upload test images/videos or use RTSP stream")
-    print("\n🔧 Features Implemented:")
-    print("   ✅ Real-time people counting with YOLOv8")
-    print("   ✅ Crowd density heatmaps")
-    print("   ✅ Anomaly detection (fallen person, stampede, clusters)")
-    print("   ✅ Threshold-based alerts")
-    print("   ✅ Emergency alert system")
-    print("   ✅ WebSocket broadcasting")
-    print("   ✅ RTSP stream processing")
-    print("   ✅ Video file analysis")
-    print("   ✅ Single image analysis")
-    print("   ✅ Efficient frame processing")
-    print("   ✅ Interactive test interface")
-    print("\n" + "=" * 60)
+@app.get("/zones")
+async def get_zones():
+    """Get all zones"""
+    return list(state.zones.values())
+
+@app.get("/zones/{zone_id}")
+async def get_zone(zone_id: str):
+    """Get a specific zone"""
+    if zone_id not in state.zones:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    return state.zones[zone_id]
+
+@app.put("/zones/{zone_id}")
+async def update_zone(zone_id: str, zone_data: dict):
+    """Update a zone"""
+    if zone_id not in state.zones:
+        raise HTTPException(status_code=404, detail="Zone not found")
     
-    # Run the server
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0", 
-        port=8000, 
-        reload=True,
-        log_level="info"
-    )
+    try:
+        # Update zone data
+        for key, value in zone_data.items():
+            if key in state.zones[zone_id]:
+                state.zones[zone_id][key] = value
+        
+        # Update crowd flow data if capacity changed
+        if "capacity" in zone_data:
+            zone = state.zones[zone_id]
+            if zone_id in state.crowd_flow_data:
+                state.crowd_flow_data[zone_id]["capacity"] = zone["capacity"]
+                state.crowd_flow_data[zone_id]["occupancy_percentage"] = (
+                    zone["current_occupancy"] / zone["capacity"] * 100
+                )
+        
+        return state.zones[zone_id]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update zone: {str(e)}")
+
+@app.delete("/zones/{zone_id}")
+async def delete_zone(zone_id: str):
+    """Delete a zone"""
+    if zone_id not in state.zones:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    
+    try:
+        # Remove zone and related data
+        del state.zones[zone_id]
+        if zone_id in state.crowd_flow_data:
+            del state.crowd_flow_data[zone_id]
+        if zone_id in state.re_routing_cache:
+            del state.re_routing_cache[zone_id]
+        
+        return {"status": "success", "message": f"Zone {zone_id} deleted"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete zone: {str(e)}")
+
+# Team Management Routes
+@app.post("/teams")
+async def create_team(team_data: dict):
+    """Create a new team"""
+    try:
+        team_id = str(uuid.uuid4())
+        team = {
+            "id": team_id,
+            "name": team_data["name"],
+            "role": team_data["role"],
+            "zone_id": team_data["zone_id"],
+            "contact": team_data["contact"],
+            "status": "active",
+            "created_at": datetime.now().isoformat() + "Z"
+        }
+        
+        state.teams[team_id] = team
+        return team
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create team: {str(e)}")
+
+@app.get("/teams")
+async def get_teams():
+    """Get all teams"""
+    return list(state.teams.values())
+
+@app.get("/teams/{team_id}")
+async def get_team(team_id: str):
+    """Get a specific team"""
+    if team_id not in state.teams:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return state.teams[team_id]
+
+@app.put("/teams/{team_id}")
+async def update_team(team_id: str, team_data: dict):
+    """Update a team"""
+    if team_id not in state.teams:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    try:
+        for key, value in team_data.items():
+            if key in state.teams[team_id]:
+                state.teams[team_id][key] = value
+        
+        return state.teams[team_id]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update team: {str(e)}")
+
+@app.delete("/teams/{team_id}")
+async def delete_team(team_id: str):
+    """Delete a team"""
+    if team_id not in state.teams:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    try:
+        del state.teams[team_id]
+        return {"status": "success", "message": f"Team {team_id} deleted"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete team: {str(e)}")
+
+# Crowd Flow Analysis Routes
+@app.get("/crowd-flow")
+async def get_crowd_flow_data():
+    """Get crowd flow data for all zones"""
+    return list(state.crowd_flow_data.values())
+
+@app.get("/zones/{zone_id}/crowd-flow")
+async def get_zone_crowd_flow(zone_id: str):
+    """Get crowd flow data for a specific zone"""
+    if zone_id not in state.crowd_flow_data:
+        raise HTTPException(status_code=404, detail="Zone not found")
+    return state.crowd_flow_data[zone_id]
+
+# Re-routing Suggestions Routes
+@app.get("/re-routing-suggestions")
+async def get_re_routing_suggestions(zone_id: str = None):
+    """Get re-routing suggestions"""
+    try:
+        if zone_id:
+            # Get suggestions for specific zone
+            if zone_id not in state.crowd_flow_data:
+                raise HTTPException(status_code=404, detail="Zone not found")
+            
+            current_zone = state.crowd_flow_data[zone_id]
+            suggestions = _generate_re_routing_suggestions(current_zone, list(state.crowd_flow_data.values()))
+            return suggestions
+        else:
+            # Get all suggestions
+            all_suggestions = []
+            for zone_id, zone_data in state.crowd_flow_data.items():
+                if zone_data["density_level"] in ["HIGH", "CRITICAL"]:
+                    suggestions = _generate_re_routing_suggestions(zone_data, list(state.crowd_flow_data.values()))
+                    all_suggestions.extend(suggestions)
+            
+            return all_suggestions
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get re-routing suggestions: {str(e)}")
+
+@app.post("/re-routing-suggestions/generate")
+async def generate_re_routing_suggestion(data: dict):
+    """Generate custom re-routing suggestion between two zones"""
+    try:
+        from_zone_id = data["from_zone_id"]
+        to_zone_id = data["to_zone_id"]
+        
+        if from_zone_id not in state.crowd_flow_data or to_zone_id not in state.crowd_flow_data:
+            raise HTTPException(status_code=404, detail="Zone not found")
+        
+        from_zone = state.crowd_flow_data[from_zone_id]
+        to_zone = state.crowd_flow_data[to_zone_id]
+        
+        suggestion = _create_re_routing_suggestion(from_zone, to_zone)
+        return suggestion
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate re-routing suggestion: {str(e)}")
+
+# Camera Management Routes
+@app.get("/cameras")
+async def get_cameras():
+    """Get all cameras with zone information"""
+    cameras = []
+    for camera_id, config in state.camera_configs.items():
+        camera = {
+            "id": camera_id,
+            "name": f"Camera {camera_id}",
+            "zone_id": config.get("zone_id", "unknown"),
+            "rtsp_url": config.get("source", ""),
+            "status": config.get("status", "stopped"),
+            "people_count": state.frame_processors[camera_id].last_count if camera_id in state.frame_processors else 0,
+            "threshold": config.get("threshold", 20),
+            "created_at": config.get("started_at", "")
+        }
+        cameras.append(camera)
+    
+    return cameras
+
+# ============================================================================
+# HELPER FUNCTIONS FOR RE-ROUTING AND CROWD ANALYSIS
+# ============================================================================
+
+def _generate_re_routing_suggestions(current_zone: dict, all_zones: list) -> list:
+    """Generate re-routing suggestions for a zone"""
+    suggestions = []
+    
+    # Filter candidate zones (exclude current and critical ones)
+    candidate_zones = [
+        zone for zone in all_zones 
+        if zone["zone_id"] != current_zone["zone_id"] 
+        and zone["density_level"] != "CRITICAL"
+        and zone["occupancy_percentage"] < 90
+    ]
+    
+    # Sort by optimal conditions
+    candidate_zones.sort(key=lambda x: (
+        {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}[x["density_level"]],
+        x["occupancy_percentage"]
+    ))
+    
+    # Generate top 3 suggestions
+    for zone in candidate_zones[:3]:
+        suggestion = _create_re_routing_suggestion(current_zone, zone)
+        suggestions.append(suggestion)
+    
+    return suggestions
+
+def _create_re_routing_suggestion(from_zone: dict, to_zone: dict) -> dict:
+    """Create a re-routing suggestion between two zones"""
+    urgency = _calculate_urgency(from_zone, to_zone)
+    estimated_wait_time = _estimate_wait_time(to_zone)
+    
+    return {
+        "from_zone": from_zone["zone_id"],
+        "to_zone": to_zone["zone_id"],
+        "reason": _generate_re_routing_reason(from_zone, to_zone),
+        "urgency": urgency,
+        "estimated_wait_time": estimated_wait_time,
+        "alternative_routes": _find_alternative_routes(from_zone["zone_id"], to_zone["zone_id"], [from_zone, to_zone]),
+        "crowd_conditions": {
+            "from_zone": from_zone,
+            "to_zone": to_zone
+        }
+    }
+
+def _calculate_urgency(from_zone: dict, to_zone: dict) -> str:
+    """Calculate urgency level for re-routing"""
+    from_density = from_zone["density_level"]
+    to_density = to_zone["density_level"]
+    
+    if from_density == "CRITICAL" and to_density == "LOW":
+        return "critical"
+    elif from_density == "HIGH" and to_density == "LOW":
+        return "high"
+    elif from_density == "MEDIUM" and to_density == "LOW":
+        return "medium"
+    else:
+        return "low"
+
+def _estimate_wait_time(zone: dict) -> int:
+    """Estimate wait time for a zone"""
+    base_wait_time = 5  # minutes
+    occupancy_multiplier = zone["occupancy_percentage"] / 100
+    density_multiplier = {"LOW": 1, "MEDIUM": 1.5, "HIGH": 2, "CRITICAL": 3}[zone["density_level"]]
+    
+    return round(base_wait_time * occupancy_multiplier * density_multiplier)
+
+def _generate_re_routing_reason(from_zone: dict, to_zone: dict) -> str:
+    """Generate human-readable reason for re-routing"""
+    if from_zone["density_level"] == "CRITICAL":
+        return f"Critical crowd density detected. Redirecting to {to_zone['zone_name']} for safety."
+    
+    if from_zone["occupancy_percentage"] > 80:
+        return f"High occupancy ({from_zone['occupancy_percentage']:.1f}%). {to_zone['zone_name']} has better capacity."
+    
+    return f"Better crowd conditions at {to_zone['zone_name']}. Estimated wait time: {_estimate_wait_time(to_zone)} minutes."
+
+def _find_alternative_routes(from_zone_id: str, to_zone_id: str, all_zones: list) -> list:
+    """Find alternative routes for re-routing"""
+    alternative_zones = [
+        zone for zone in all_zones
+        if zone["zone_id"] not in [from_zone_id, to_zone_id]
+        and zone["density_level"] == "LOW"
+    ]
+    
+    return [zone["zone_name"] for zone in alternative_zones[:2]]
+
+# ============================================================================
+# IMPROVED ALERT SYSTEM WITH DEDUPLICATION
+# ============================================================================
+
+def _should_send_alert(alert_type: str, camera_id: str, content_hash: str, debounce_time: float = 5.0) -> bool:
+    """Check if an alert should be sent (prevents duplicates)"""
+    current_time = time.time()
+    alert_key = f"{alert_type}_{camera_id}"
+    
+    # Check if content is the same
+    if alert_key in state.alert_content_hash and state.alert_content_hash[alert_key] == content_hash:
+        # Check debounce time
+        if alert_key in state.alert_last_sent:
+            if current_time - state.alert_last_sent[alert_key] < debounce_time:
+                return False
+    
+    # Update tracking
+    state.alert_content_hash[alert_key] = content_hash
+    state.alert_last_sent[alert_key] = current_time
+    return True
+
+def _create_content_hash(data: dict) -> str:
+    """Create a hash of alert content for deduplication"""
+    import hashlib
+    # Create a stable string representation
+    content_str = json.dumps(data, sort_keys=True)
+    return hashlib.md5(content_str.encode()).hexdigest()
+
+# ============================================================================
+# UPDATED FRAME PROCESSOR WITH IMPROVED ALERT SYSTEM
+# ============================================================================

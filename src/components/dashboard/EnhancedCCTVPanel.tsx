@@ -35,22 +35,7 @@ interface CameraStream {
   is_live: boolean;
 }
 
-interface DetectionBox {
-  bbox: [number, number, number, number]; // [x1, y1, x2, y2]
-  confidence: number;
-  center: [number, number];
-}
-
-interface LiveFrame {
-  type: string;
-  camera_id: string;
-  frame: string; // base64 image
-  people_count: number;
-  density_level: string;
-  timestamp: string;
-}
-
-const CCTVPanel = () => {
+const EnhancedCCTVPanel = () => {
   const [cameras, setCameras] = useState<CameraStream[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -139,7 +124,7 @@ const CCTVPanel = () => {
 
     ws.onmessage = (event) => {
       try {
-        const data: LiveFrame = JSON.parse(event.data);
+        const data = JSON.parse(event.data);
         
         if (data.type === 'LIVE_FRAME') {
           // Update camera with new frame and data
@@ -658,4 +643,4 @@ const CCTVPanel = () => {
   );
 };
 
-export default CCTVPanel;
+export default EnhancedCCTVPanel; 
