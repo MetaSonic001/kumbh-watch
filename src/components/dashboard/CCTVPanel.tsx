@@ -588,6 +588,16 @@ interface LiveFrame {
                     </span>
                   </div>
                   
+                  {camera.zone_name && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Zone:</span>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span className="font-medium text-primary">{camera.zone_name}</span>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">People Count:</span>
                     <div className="flex items-center gap-1">

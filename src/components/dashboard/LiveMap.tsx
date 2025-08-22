@@ -7,6 +7,7 @@ import { MapPin, Layers, ZoomIn, AlertTriangle, Users } from "lucide-react";
 import { WS_URL, MAPBOX_ACCESS_TOKEN, API_URL } from "@/config";
 import { backendService } from "@/services/backendService";
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { toast } from "sonner";
 
 mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
@@ -29,22 +30,7 @@ const LiveMap = () => {
   const [activeHeatmapZone, setActiveHeatmapZone] = useState<string | null>(null);
   const [heatmapOpacity, setHeatmapOpacity] = useState(0.7);
 
-  // Load zones from backend
-  useEffect(() => {
-    const loadZones = async () => {
-      try {
-        const zonesData = await backendService.getZonesWithHeatmap();
-        setZones(zonesData);
-      } catch (error) {
-        console.error('Failed to load zones:', error);
-      }
-    };
-
-    loadZones();
-    const interval = setInterval(loadZones, 10000); // Refresh every 10 seconds
-    return () => clearInterval(interval);
-  }, []);
-
+  // Initialize map
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -96,7 +82,31 @@ const LiveMap = () => {
       addZoneMarkers();
     });
 
-    // WebSocket for real-time updates
+    return () => {
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+      }
+    };
+  }, []);
+
+  // Load zones from backend
+  useEffect(() => {
+    const loadZones = async () => {
+      try {
+        const zonesData = await backendService.getZonesWithHeatmap();
+        setZones(zonesData);
+      } catch (error) {
+        console.error('Failed to load zones:', error);
+      }
+    };
+
+    loadZones();
+    const interval = setInterval(loadZones, 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  // WebSocket for real-time updates
+  useEffect(() => {
     const ws = new WebSocket(`${WS_URL}/ws/live-map`);
     
     ws.onopen = () => {
@@ -122,6 +132,33 @@ const LiveMap = () => {
         if (data.heatmap_data && data.heatmap_data.hotspots) {
           updateZoneHeatmap(data.zone_id, data.heatmap_data);
         }
+      } else if (data.type === 'HEATMAP_ALERT') {
+        // Automatically show heatmap for zones with crowd alerts
+        if (data.heatmap_data && data.heatmap_data.hotspots && data.heatmap_data.hotspots.length > 0) {
+          // Find the zone that this camera belongs to
+          const zoneId = data.zone_id;
+          if (zoneId) {
+            updateZoneHeatmap(zoneId, data.heatmap_data);
+            
+            // Show notification
+            toast.info(`Heatmap activated for zone due to crowd alert`, {
+              description: `${data.heatmap_data.hotspots.length} hotspots detected`
+            });
+          }
+        }
+      } else if (data.type === 'THRESHOLD_BREACH') {
+        // Show heatmap for threshold breaches
+        const zoneId = data.zone_id;
+        if (zoneId) {
+          const zone = zones.find(z => z.id === zoneId);
+          if (zone && zone.heatmap_data) {
+            updateZoneHeatmap(zoneId, zone.heatmap_data);
+            
+            toast.warning(`Threshold breached in zone`, {
+              description: `${data.people_count} people detected (threshold: ${data.threshold})`
+            });
+          }
+        }
       }
     };
 
@@ -130,12 +167,9 @@ const LiveMap = () => {
     };
 
     return () => {
-      if (mapInstance.current) {
-        mapInstance.current.remove();
-      }
       ws.close();
     };
-  }, []);
+  }, [zones]);
 
   // Update zones when zones state changes
   useEffect(() => {
