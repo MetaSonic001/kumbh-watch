@@ -22,6 +22,12 @@ import StatsCards from "@/components/dashboard/StatsCards";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
+  const [isConnected, setIsConnected] = useState(true);
+
+  const handleQuickAction = (action: string) => {
+    console.log(`Quick action triggered: ${action}`);
+    // Add your action handling logic here
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -94,7 +100,10 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <QuickActions />
+                <QuickActions 
+                  onAction={handleQuickAction}
+                  isConnected={isConnected}
+                />
               </CardContent>
             </Card>
           </motion.div>
