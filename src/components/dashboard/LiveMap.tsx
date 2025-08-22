@@ -399,7 +399,7 @@ const LiveMap = () => {
     // Find the marker element for this zone
     const markerElement = document.querySelector(`[data-zone-id="${zoneId}"]`);
     if (markerElement) {
-      const colorCircle = markerElement.querySelector('.zone-marker > div > div') as HTMLElement;
+      const colorCircle = markerElement.querySelector('.zone-marker > div > div');
       if (colorCircle) {
         colorCircle.style.backgroundColor = getCrowdColor(densityLevel);
       }
