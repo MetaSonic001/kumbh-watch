@@ -20,7 +20,7 @@ import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import LiveMap from "@/components/dashboard/LiveMap";
 import AlertsPanel from "@/components/dashboard/AlertsPanel";
 import CCTVPanel from "@/components/dashboard/CCTVPanel";
-import QuickActions from "@/components/dashboard/QuickActions";
+import SmartReRouting from "@/components/dashboard/SmartReRouting";
 import StatsCards from "@/components/dashboard/StatsCards";
 import CameraManagement from "@/components/dashboard/CameraManagement";
 import { API_URL } from "@/config";
@@ -117,14 +117,13 @@ const Dashboard = () => {
       case 'broadcast':
         toast.success(`Broadcast sent: ${details.message}`);
         break;
-      case 'smart_re_routing':
-        toast.info('Smart Re-routing System', {
-          description: 'Navigate to the Live Map to view and manage smart re-routing suggestions. The system automatically detects high-density zones.'
-        });
-        break;
       default:
         toast.info(`Action: ${action}`);
     }
+  };
+
+  const handleAlertSent = (message: string) => {
+    toast.success(`Alert sent: ${message}`);
   };
 
   const getConnectionStatus = () => {
@@ -267,19 +266,16 @@ const Dashboard = () => {
               </CardContent>
             </Card>
 
-            {/* Quick Actions */}
+            {/* Smart Re-Routing */}
             <Card className="h-[500px] overflow-y-auto">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
-                  <Radio className="w-5 h-5 text-secondary" />
-                  Quick Actions
+                  <Users className="w-5 h-5 text-secondary" />
+                  Smart Re-Routing
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <QuickActions 
-                  onAction={handleQuickAction}
-                  isConnected={isConnected}
-                />
+                <SmartReRouting onAlertSent={handleAlertSent} />
               </CardContent>
             </Card>
           </motion.div>

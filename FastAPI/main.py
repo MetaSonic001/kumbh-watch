@@ -1667,60 +1667,60 @@ async def get_zones_with_heatmap():
         raise HTTPException(status_code=500, detail=f"Failed to fetch zones with heatmap: {str(e)}")
 
 # Zone Management Routes (Missing - Add these)
-@app.get("/zones/{zone_id}")
-async def get_zone(zone_id: str):
-    """Get a specific zone"""
-    try:
-        if zone_id not in state.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
-        return state.zones[zone_id]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch zone: {str(e)}")
+# @app.get("/zones/{zone_id}") - REMOVED
+# async def get_zone(zone_id: str):
+#     """Get a specific zone"""
+#     try:
+#         if zone_id not in state.zones:
+#             raise HTTPException(status_code=404, detail="Zone not found")
+#         return state.zones[zone_id]
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to fetch zone: {str(e)}")
 
-@app.put("/zones/{zone_id}")
-async def update_zone(zone_id: str, zone_data: dict):
-    """Update a zone"""
-    try:
-        if zone_id not in state.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
-        
-        # Update zone data
-        for key, value in zone_data.items():
-            if key in state.zones[zone_id]:
-                state.zones[zone_id][key] = value
-        
-        # Update crowd flow data if capacity changed
-        if "capacity" in zone_data:
-            zone = state.zones[zone_id]
-            if zone_id in state.crowd_flow_data:
-                state.crowd_flow_data[zone_id]["capacity"] = zone["capacity"]
-                state.crowd_flow_data[zone_id]["occupancy_percentage"] = (
-                    zone["current_occupancy"] / zone["capacity"] * 100
-                )
-        
-        return state.zones[zone_id]
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update zone: {str(e)}")
+# @app.put("/zones/{zone_id}") - REMOVED
+# async def update_zone(zone_id: str, zone_data: dict):
+#     """Update a zone"""
+#     try:
+#         if zone_id not in state.zones:
+#             raise HTTPException(status_code=404, detail="Zone not found")
+#         
+#         # Update zone data
+#         for key, value in zone_data.items():
+#             if key in state.zones[zone_id]:
+#                 state.zones[zone_id][key] = value
+#         
+#         # Update crowd flow data if capacity changed
+#         if "capacity" in zone_data:
+#             zone = state.zones[zone_id]
+#             if zone_id in state.crowd_flow_data:
+#                 state.crowd_flow_data[zone_id]["capacity"] = zone["capacity"]
+#                 state.crowd_flow_data[zone_id]["occupancy_percentage"] = (
+#                     zone["current_occupancy"] / zone["capacity"] * 100
+#                 )
+#         
+#         return state.zones[zone_id]
+#         
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to update zone: {str(e)}")
 
-@app.delete("/zones/{zone_id}")
-async def delete_zone(zone_id: str):
-    """Delete a zone"""
-    try:
-        if zone_id not in state.zones:
-            raise HTTPException(status_code=404, detail="Zone not found")
-        
-        # Remove zone and related data
-        del state.zones[zone_id]
-        if zone_id in state.crowd_flow_data:
-            del state.crowd_flow_data[zone_id]
-        if zone_id in state.re_routing_cache:
-            del state.re_routing_cache[zone_id]
-        
-        return {"status": "success", "message": f"Zone {zone_id} deleted"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete zone: {str(e)}")
+# @app.delete("/zones/{zone_id}") - REMOVED
+# async def delete_zone(zone_id: str):
+#     """Delete a zone"""
+#     try:
+#         if zone_id not in state.zones:
+#             raise HTTPException(status_code=404, detail="Zone not found")
+#         
+#         # Remove zone and related data
+#         del state.zones[zone_id]
+#         if zone_id in state.crowd_flow_data:
+#             del state.crowd_flow_data[zone_id]
+#         if zone_id in state.re_routing_cache:
+#             del state.re_routing_cache[zone_id]
+#         
+#         return {"status": "success", "message": f"Zone {zone_id} deleted"}
+#         
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Failed to delete zone: {str(e)}")
 
 # Team Management Routes
 @app.post("/teams")

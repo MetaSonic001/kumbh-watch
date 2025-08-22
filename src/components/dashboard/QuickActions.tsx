@@ -18,8 +18,7 @@ import {
   Video,
   Upload,
   Settings,
-  Zap,
-  Navigation
+  Zap
 } from "lucide-react";
 import { API_URL } from "@/config";
 
@@ -327,42 +326,6 @@ const QuickActions = ({ onAction, isConnected }: QuickActionsProps) => {
               Start
             </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Smart Re-routing System */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Navigation className="w-4 h-4 text-orange-600" />
-            Smart Re-routing System
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="p-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200">
-            <p className="text-xs text-orange-800 mb-3">
-              🚨 <strong>Automatic Detection:</strong> System monitors all zones and automatically suggests re-routing when crowd density becomes unsafe.
-            </p>
-            <div className="space-y-2 text-xs text-orange-700">
-              <div className="flex items-center gap-2">
-                <span>🔴 Critical:</span>
-                <span>90%+ occupancy - Immediate action required</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>🟠 High:</span>
-                <span>80%+ occupancy - Re-routing recommended</span>
-              </div>
-            </div>
-          </div>
-          <Button 
-            onClick={() => onAction("smart_re_routing", { action: "info" })}
-            disabled={!isConnected}
-            size="sm"
-            className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
-          >
-            <Navigation className="w-4 h-4 mr-2" />
-            View Smart Re-routing
-          </Button>
         </CardContent>
       </Card>
 

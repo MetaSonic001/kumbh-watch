@@ -222,6 +222,38 @@ class BackendService {
     });
   }
 
+  // Re-routing Management
+  async getReRoutingSuggestions(zoneId?: string): Promise<ReRoutingSuggestion[]> {
+    const url = zoneId 
+      ? `${this.baseUrl}/re-routing-suggestions?zone_id=${zoneId}`
+      : `${this.baseUrl}/re-routing-suggestions`;
+    
+    const response = await this.makeRequest(url);
+    return response;
+  }
+
+  async generateReRoutingSuggestion(fromZoneId: string, toZoneId: string): Promise<ReRoutingSuggestion> {
+    const response = await this.makeRequest(`${this.baseUrl}/re-routing-suggestions/generate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        from_zone_id: fromZoneId,
+        to_zone_id: toZoneId
+      }),
+    });
+    return response;
+  }
+
+  async sendEmergencyInstructions(instructions: string, priority: string = 'HIGH', duration: number = 300): Promise<void> {
+    await this.makeRequest(`${this.baseUrl}/instructions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        instructions,
+        priority,
+        duration
+      }),
+    });
+  }
+
   // Camera Management
   async startCameraMonitoring(cameraData: {
     camera_id: string;
@@ -264,42 +296,9 @@ class BackendService {
     });
   }
 
-  async sendEmergencyInstructions(instructionsData: {
-    instructions: string;
-    priority: string;
-    duration: number;
-  }): Promise<void> {
-    await this.makeRequest(`${this.baseUrl}/instructions`, {
-      method: 'POST',
-      body: JSON.stringify(instructionsData),
-    });
-  }
-
   // Add new methods for live map integration
   async getZonesWithHeatmap(): Promise<any[]> {
     const response = await this.makeRequest(`${this.baseUrl}/zones/heatmap`);
-    
-    return response;
-  }
-
-  // Re-routing suggestions
-  async getReRoutingSuggestions(zoneId?: string): Promise<ReRoutingSuggestion[]> {
-    const url = zoneId 
-      ? `${this.baseUrl}/re-routing-suggestions?zone_id=${zoneId}`
-      : `${this.baseUrl}/re-routing-suggestions`;
-    
-    const response = await this.makeRequest(url);
-    return response;
-  }
-
-  async generateReRoutingSuggestion(fromZoneId: string, toZoneId: string): Promise<ReRoutingSuggestion> {
-    const response = await this.makeRequest(`${this.baseUrl}/re-routing-suggestions/generate`, {
-      method: 'POST',
-      body: JSON.stringify({
-        from_zone_id: fromZoneId,
-        to_zone_id: toZoneId
-      }),
-    });
     
     return response;
   }

@@ -3,24 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  MapPin, 
-  Users, 
-  AlertTriangle, 
-  Navigation,
-  RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  Layers,
-  ZoomIn
-} from "lucide-react";
-import { motion } from "framer-motion";
+import { MapPin, Layers, ZoomIn, AlertTriangle, Users } from "lucide-react";
 import { WS_URL, MAPBOX_ACCESS_TOKEN, API_URL } from "@/config";
 import { backendService } from "@/services/backendService";
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { toast } from "sonner";
-import SmartReRoutingModal from "./SmartReRoutingModal";
 
 mapboxgl.accessToken = MAPBOX_ACCESS_TOKEN;
 
@@ -42,16 +29,6 @@ const LiveMap = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [activeHeatmapZone, setActiveHeatmapZone] = useState<string | null>(null);
   const [heatmapOpacity, setHeatmapOpacity] = useState(0.7);
-  const [isSmartReRoutingModalOpen, setIsSmartReRoutingModalOpen] = useState(false);
-  const [currentZoneForReRouting, setCurrentZoneForReRouting] = useState<{
-    id: string;
-    name: string;
-    densityLevel: string;
-    occupancy: number;
-    capacity: number;
-  } | null>(null);
-  const [showHeatmap, setShowHeatmap] = useState(true);
-  const [showColorCodedHeatmap, setShowColorCodedHeatmap] = useState(false);
 
   // Initialize map
   useEffect(() => {
@@ -197,12 +174,6 @@ const LiveMap = () => {
           
           // Update zone marker color
           updateZoneMarkerColor(data.zone_id, data.density_level);
-
-          // Check for zones that need re-routing
-          const zoneToCheck = zones.find(z => z.id === data.zone_id);
-          if (zoneToCheck) {
-            checkForReRoutingNeeds(zoneToCheck);
-          }
         }
       }
     };
@@ -529,38 +500,6 @@ const LiveMap = () => {
     }
   };
 
-  // Check for zones that need re-routing
-  const checkForReRoutingNeeds = (zoneData: any) => {
-    const densityLevel = zoneData.density_level;
-    const occupancyPercentage = (zoneData.current_occupancy / zoneData.capacity) * 100;
-    
-    // Trigger re-routing for HIGH or CRITICAL density zones
-    if ((densityLevel === "HIGH" && occupancyPercentage > 80) || 
-        (densityLevel === "CRITICAL" && occupancyPercentage > 90)) {
-      
-      setCurrentZoneForReRouting({
-        id: zoneData.id,
-        name: zoneData.name,
-        densityLevel: densityLevel,
-        occupancy: zoneData.current_occupancy,
-        capacity: zoneData.capacity
-      });
-      
-      setIsSmartReRoutingModalOpen(true);
-      
-      // Show toast notification
-      toast.warning(`High crowd density detected in ${zoneData.name}!`, {
-        description: `Smart re-routing suggestions are available. Current occupancy: ${Math.round(occupancyPercentage)}%`
-      });
-    }
-  };
-
-  // Handle re-routing modal close
-  const handleReRoutingModalClose = () => {
-    setIsSmartReRoutingModalOpen(false);
-    setCurrentZoneForReRouting(null);
-  };
-
   return (
     <div className="relative w-full h-full rounded-lg overflow-hidden">
       <div ref={mapRef} className="absolute inset-0" />
@@ -581,70 +520,6 @@ const LiveMap = () => {
       </div>
 
       {/* Heatmap Controls */}
-      <Card className="mb-4">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Layers className="w-5 h-5 text-primary" />
-            Heatmap Controls
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setHeatmapOpacity(prev => prev === 0.7 ? 0.3 : 0.7)}
-              className="flex-1"
-            >
-              <Layers className="w-4 h-4 mr-2" />
-              Toggle Opacity
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setActiveHeatmapZone(null)}
-              className="flex-1"
-            >
-              <ZoomIn className="w-4 h-4 mr-2" />
-              Hide All Heatmaps
-            </Button>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const highDensityZones = zones.filter(z => 
-                  z.density_level === "HIGH" || z.density_level === "CRITICAL"
-                );
-                if (highDensityZones.length > 0) {
-                  const zone = highDensityZones[0];
-                  setCurrentZoneForReRouting({
-                    id: zone.id,
-                    name: zone.name,
-                    densityLevel: zone.density_level,
-                    occupancy: zone.current_occupancy,
-                    capacity: zone.capacity
-                  });
-                  setIsSmartReRoutingModalOpen(true);
-                } else {
-                  toast.info("No high-density zones detected", {
-                    description: "All zones are operating within safe capacity limits"
-                  });
-                }
-              }}
-              className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
-            >
-              <Navigation className="w-4 h-4 mr-2" />
-              Smart Re-routing
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Heatmap */}
       {activeHeatmapZone && (
         <div className="absolute top-4 left-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 space-y-2 max-w-xs">
           <h4 className="text-sm font-semibold">Active Heatmap</h4>
@@ -825,19 +700,6 @@ const LiveMap = () => {
           </div>
         )}
       </div>
-
-      {/* Smart Re-Routing Modal */}
-      {isSmartReRoutingModalOpen && currentZoneForReRouting && (
-        <SmartReRoutingModal
-          isOpen={isSmartReRoutingModalOpen}
-          onClose={handleReRoutingModalClose}
-          currentZoneId={currentZoneForReRouting.id}
-          currentZoneName={currentZoneForReRouting.name}
-          currentDensityLevel={currentZoneForReRouting.densityLevel}
-          currentOccupancy={currentZoneForReRouting.occupancy}
-          currentCapacity={currentZoneForReRouting.capacity}
-        />
-      )}
     </div>
   );
 };
