@@ -28,7 +28,7 @@ import { API_URL } from "@/config";
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [isConnected, setIsConnected] = useState(false);
-  const [systemStatus, setSystemStatus] = useState(null);
+  const [systemStatus, setSystemStatus] = useState<any>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -267,13 +267,10 @@ const Dashboard = () => {
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-accent">
-                      {(() => {
-                        if (systemStatus.websocket_connections?.frames) {
-                          const frameCounts = Object.values(systemStatus.websocket_connections.frames);
-                          return frameCounts.reduce((sum: number, count: any) => sum + (count as number), 0);
-                        }
-                        return 0;
-                      })()}
+                      {systemStatus.websocket_connections?.frames ? 
+                        Object.values(systemStatus.websocket_connections.frames).reduce((sum: number, count: any) => sum + (count as number), 0) : 
+                        0
+                      }
                     </div>
                     <div className="text-muted-foreground">Frame Subscribers</div>
                   </div>
@@ -282,6 +279,21 @@ const Dashboard = () => {
                       {systemStatus.models_loaded ? '✅' : '❌'}
                     </div>
                     <div className="text-muted-foreground">AI Models</div>
+                  </div>
+                </div>
+                
+                {/* Additional Backend Info */}
+                <div className="mt-4 pt-4 border-t">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <span className="font-medium">Python Version:</span> {systemStatus.system_info?.python_version || 'Unknown'}
+                    </div>
+                    <div>
+                      <span className="font-medium">OpenCV:</span> {systemStatus.system_info?.opencv_version || 'Unknown'}
+                    </div>
+                    <div>
+                      <span className="font-medium">CUDA:</span> {systemStatus.system_info?.torch_available ? 'Available' : 'Not Available'}
+                    </div>
                   </div>
                 </div>
               </CardContent>

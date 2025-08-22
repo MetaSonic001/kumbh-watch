@@ -198,179 +198,179 @@ const ZoneManager = ({ selectedZone, onZoneSelect }: ZoneManagerProps) => {
       {!showMapView && (
         <>
           {/* Zone Creation Form */}
-          <Card>
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Plus className="w-5 h-5 text-primary" />
+            Create New Zone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="zone-name">Zone Name</Label>
+            <Input
+              id="zone-name"
+              placeholder="Enter zone name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="zone-type">Zone Type</Label>
+                <Select value={selectedZoneType} onValueChange={(value) => setSelectedZoneType(value)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {zoneTypes.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    <div className="flex items-center gap-2">
+                      <span>{type.icon}</span>
+                      <span>{type.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="zone-capacity">Capacity</Label>
+            <Input
+              id="zone-capacity"
+              type="number"
+              placeholder="Maximum people"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="zone-description">Description</Label>
+            <Input
+              id="zone-description"
+              placeholder="Brief description"
+            />
+          </div>
+
+          <Button className="w-full bg-gradient-sacred">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Zone
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Existing Zones List */}
+      <div className="space-y-4">
+        <h3 className="font-semibold flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-secondary" />
+          Existing Zones ({zones.length})
+        </h3>
+
+        <div className="space-y-3">
+          {zones.map((zone) => (
+            <Card 
+              key={zone.id}
+              className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
+                zone.id === selectedZone ? 'ring-2 ring-primary' : ''
+              }`}
+              onClick={() => onZoneSelect(zone.id === selectedZone ? null : zone.id)}
+            >
+              <CardContent className="p-4">
+                <div className="space-y-3">
+                  {/* Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <h4 className="font-medium">{zone.name}</h4>
+                      <p className="text-xs text-muted-foreground">{zone.description}</p>
+                    </div>
+                    <Badge className={getStatusColor(zone.status)}>
+                      {zone.status}
+                    </Badge>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span>{zone.capacity.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-muted-foreground" />
+                      <span>{zone.cctvCount} cameras</span>
+                    </div>
+                  </div>
+
+                  {/* Type badge */}
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">
+                      {zoneTypes.find(t => t.value === zone.type)?.icon} {' '}
+                      {zoneTypes.find(t => t.value === zone.type)?.label}
+                    </Badge>
+                    
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive">
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Selected Zone Details */}
+      {selectedZoneData && (
+        <>
+          <Separator />
+          <Card className="border-primary">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Plus className="w-5 h-5 text-primary" />
-                Create New Zone
+                <Settings className="w-5 h-5 text-primary" />
+                Zone Details
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="zone-name">Zone Name</Label>
-                <Input
-                  id="zone-name"
-                  placeholder="Enter zone name"
-                />
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Name</Label>
+                  <p className="font-medium">{selectedZoneData.name}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Type</Label>
+                  <p className="font-medium capitalize">{selectedZoneData.type}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Capacity</Label>
+                  <p className="font-medium">{selectedZoneData.capacity.toLocaleString()}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">CCTV Cameras</Label>
+                  <p className="font-medium">{selectedZoneData.cctvCount}</p>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="zone-type">Zone Type</Label>
-                <Select value={selectedZoneType} onValueChange={(value) => setSelectedZoneType(value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {zoneTypes.map((type) => (
-                      <SelectItem key={type.value} value={type.value}>
-                        <div className="flex items-center gap-2">
-                          <span>{type.icon}</span>
-                          <span>{type.label}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div>
+                <Label className="text-xs text-muted-foreground">Description</Label>
+                <p className="font-medium">{selectedZoneData.description}</p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="zone-capacity">Capacity</Label>
-                <Input
-                  id="zone-capacity"
-                  type="number"
-                  placeholder="Maximum people"
-                />
+              <div className="flex gap-2 pt-2">
+                <Button size="sm" variant="outline" className="flex-1">
+                  <Camera className="w-4 h-4 mr-2" />
+                  Add CCTV
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1">
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Zone
+                </Button>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="zone-description">Description</Label>
-                <Input
-                  id="zone-description"
-                  placeholder="Brief description"
-                />
-              </div>
-
-              <Button className="w-full bg-gradient-sacred">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Zone
-              </Button>
             </CardContent>
           </Card>
-
-          <Separator />
-
-          {/* Existing Zones List */}
-          <div className="space-y-4">
-            <h3 className="font-semibold flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-secondary" />
-              Existing Zones ({zones.length})
-            </h3>
-
-            <div className="space-y-3">
-              {zones.map((zone) => (
-                <Card 
-                  key={zone.id}
-                  className={`cursor-pointer transition-all duration-200 hover:shadow-md ${
-                    zone.id === selectedZone ? 'ring-2 ring-primary' : ''
-                  }`}
-                  onClick={() => onZoneSelect(zone.id === selectedZone ? null : zone.id)}
-                >
-                  <CardContent className="p-4">
-                    <div className="space-y-3">
-                      {/* Header */}
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <h4 className="font-medium">{zone.name}</h4>
-                          <p className="text-xs text-muted-foreground">{zone.description}</p>
-                        </div>
-                        <Badge className={getStatusColor(zone.status)}>
-                          {zone.status}
-                        </Badge>
-                      </div>
-
-                      {/* Stats */}
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-muted-foreground" />
-                          <span>{zone.capacity.toLocaleString()}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Camera className="w-4 h-4 text-muted-foreground" />
-                          <span>{zone.cctvCount} cameras</span>
-                        </div>
-                      </div>
-
-                      {/* Type badge */}
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="text-xs">
-                          {zoneTypes.find(t => t.value === zone.type)?.icon} {' '}
-                          {zoneTypes.find(t => t.value === zone.type)?.label}
-                        </Badge>
-                        
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                            <Edit className="w-3 h-3" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive hover:text-destructive">
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Selected Zone Details */}
-          {selectedZoneData && (
-            <>
-              <Separator />
-              <Card className="border-primary">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-primary" />
-                    Zone Details
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Name</Label>
-                      <p className="font-medium">{selectedZoneData.name}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Type</Label>
-                      <p className="font-medium capitalize">{selectedZoneData.type}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Capacity</Label>
-                      <p className="font-medium">{selectedZoneData.capacity.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">CCTV Cameras</Label>
-                      <p className="font-medium">{selectedZoneData.cctvCount}</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Description</Label>
-                    <p className="font-medium">{selectedZoneData.description}</p>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <Button size="sm" variant="outline" className="flex-1">
-                      <Camera className="w-4 h-4 mr-2" />
-                      Add CCTV
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex-1">
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit Zone
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
             </>
           )}
         </>

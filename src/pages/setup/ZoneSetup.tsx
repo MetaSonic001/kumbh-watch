@@ -109,16 +109,16 @@ const ZoneSetup = () => {
     >
       <div className="space-y-6">
         {/* Zone Type Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
               <MapPin className="w-5 h-5 text-primary" />
               Select Zone Type
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {zoneTypes.map((type) => (
+                {zoneTypes.map((type) => (
                 <div
                   key={type.value}
                   className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 hover:shadow-md ${
@@ -131,13 +131,13 @@ const ZoneSetup = () => {
                   <div className="text-center space-y-2">
                     <div className="text-2xl">{type.icon}</div>
                     <div className="font-medium text-sm">{type.label}</div>
-                    <div className="text-xs text-muted-foreground">{type.description}</div>
+                      <div className="text-xs text-muted-foreground">{type.description}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
         {/* View Toggle */}
         <div className="flex items-center justify-center">
@@ -176,150 +176,150 @@ const ZoneSetup = () => {
               onZoneDelete={handleDeleteZone}
               selectedZoneType={selectedZoneType}
             />
-          </motion.div>
+        </motion.div>
         )}
 
         {/* List View */}
         {!showMapView && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {/* Zone List */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="space-y-6"
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5 text-secondary" />
-                      Configured Zones ({state.zones.length})
-                    </span>
-                    {state.zones.length > 0 && (
-                      <Badge variant="outline" className="text-success border-success">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Ready
-                      </Badge>
-                    )}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    <AnimatePresence>
-                      {state.zones.map((zone) => (
-                        <motion.div
-                          key={zone.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md ${
-                            getZoneColor(zone.type)
-                          } ${selectedZone === zone.id ? 'ring-2 ring-primary' : ''}`}
-                          onClick={() => setSelectedZone(zone.id === selectedZone ? null : zone.id)}
-                        >
-                          <div className="space-y-3">
-                            <div className="flex items-start justify-between">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-lg">{getZoneIcon(zone.type)}</span>
-                                  <h4 className="font-medium">{zone.name}</h4>
-                                </div>
-                                <p className="text-xs text-muted-foreground">{zone.description}</p>
-                              </div>
-                              <Badge variant="outline" className="text-xs capitalize">
-                                {zone.type}
-                              </Badge>
+        {/* Zone List */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="space-y-6"
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-secondary" />
+                  Configured Zones ({state.zones.length})
+                </span>
+                {state.zones.length > 0 && (
+                  <Badge variant="outline" className="text-success border-success">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Ready
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                <AnimatePresence>
+                  {state.zones.map((zone) => (
+                    <motion.div
+                      key={zone.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md ${
+                        getZoneColor(zone.type)
+                      } ${selectedZone === zone.id ? 'ring-2 ring-primary' : ''}`}
+                      onClick={() => setSelectedZone(zone.id === selectedZone ? null : zone.id)}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{getZoneIcon(zone.type)}</span>
+                              <h4 className="font-medium">{zone.name}</h4>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div className="flex items-center gap-2">
-                                <Users className="w-4 h-4 text-muted-foreground" />
-                                <span>{zone.capacity.toLocaleString()}</span>
-                              </div>
-                              <div className="text-muted-foreground">
-                                ID: {zone.id.slice(-6)}
-                              </div>
-                            </div>
-
-                            {selectedZone === zone.id && (
-                              <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: "auto" }}
-                                exit={{ opacity: 0, height: 0 }}
-                                className="flex gap-2 pt-2 border-t"
-                              >
-                                <Button variant="ghost" size="sm" className="flex-1">
-                                  <Edit className="w-3 h-3 mr-1" />
-                                  Edit
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="flex-1 text-destructive hover:text-destructive"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteZone(zone.id);
-                                  }}
-                                >
-                                  <Trash2 className="w-3 h-3 mr-1" />
-                                  Delete
-                                </Button>
-                              </motion.div>
-                            )}
+                            <p className="text-xs text-muted-foreground">{zone.description}</p>
                           </div>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {zone.type}
+                          </Badge>
+                        </div>
 
-                    {state.zones.length === 0 && (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <MapPin className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                        <p>No zones configured yet</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 text-muted-foreground" />
+                            <span>{zone.capacity.toLocaleString()}</span>
+                          </div>
+                          <div className="text-muted-foreground">
+                            ID: {zone.id.slice(-6)}
+                          </div>
+                        </div>
+
+                        {selectedZone === zone.id && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="flex gap-2 pt-2 border-t"
+                          >
+                            <Button variant="ghost" size="sm" className="flex-1">
+                              <Edit className="w-3 h-3 mr-1" />
+                              Edit
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="flex-1 text-destructive hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteZone(zone.id);
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3 mr-1" />
+                              Delete
+                            </Button>
+                          </motion.div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+
+                {state.zones.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MapPin className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No zones configured yet</p>
                         <p className="text-sm">Switch to Map View to create zones by clicking on the map</p>
-                      </div>
-                    )}
                   </div>
-                </CardContent>
-              </Card>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-              {/* Summary Stats */}
-              {state.zones.length > 0 && (
-                <Card>
-                  <CardContent className="p-6">
-                    <h4 className="font-semibold mb-4">Zone Summary</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <div className="text-2xl font-bold text-primary">
-                          {state.zones.reduce((sum, zone) => sum + zone.capacity, 0).toLocaleString()}
-                        </div>
-                        <div className="text-muted-foreground">Total Capacity</div>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-bold text-secondary">
-                          {state.zones.length}
-                        </div>
-                        <div className="text-muted-foreground">Zones Created</div>
-                      </div>
+          {/* Summary Stats */}
+          {state.zones.length > 0 && (
+            <Card>
+              <CardContent className="p-6">
+                <h4 className="font-semibold mb-4">Zone Summary</h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <div className="text-2xl font-bold text-primary">
+                      {state.zones.reduce((sum, zone) => sum + zone.capacity, 0).toLocaleString()}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-            </motion.div>
+                    <div className="text-muted-foreground">Total Capacity</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-secondary">
+                      {state.zones.length}
+                    </div>
+                    <div className="text-muted-foreground">Zones Created</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </motion.div>
 
             {/* Instructions */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-            >
-              <Card className="h-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+        >
+          <Card className="h-full">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                     <Map className="w-5 h-5 text-accent" />
                     How to Create Zones
-                  </CardTitle>
-                </CardHeader>
+              </CardTitle>
+            </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
@@ -340,8 +340,8 @@ const ZoneSetup = () => {
                         <h4 className="font-medium text-sm">Switch to Map View</h4>
                         <p className="text-xs text-muted-foreground">Click the "Map View" button to see the interactive map</p>
                       </div>
-                    </div>
-                    
+                      </div>
+                      
                     <div className="flex items-start gap-3">
                       <div className="w-6 h-6 rounded-full bg-primary text-white text-xs flex items-center justify-center font-bold mt-0.5">
                         3
@@ -374,10 +374,10 @@ const ZoneSetup = () => {
                         </div>
                       ))}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
           </div>
         )}
       </div>
