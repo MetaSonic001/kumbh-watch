@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kumbh Mela Emergency Response Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(45deg, #ff6b35, #ff8c42);
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header h1 {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .header .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 0.5rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .priority-very-high { color: #dc3545; }
+        .priority-high { color: #fd7e14; }
+        .priority-medium { color: #ffc107; }
+        .priority-low { color: #28a745; }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .emergencies-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #eee;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-active { background: #28a745; }
+        .status-resolved { background: #6c757d; }
+        .status-error { background: #dc3545; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .emergency-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid #ddd;
+            transition: all 0.3s ease;
+        }
+
+        .emergency-card:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .emergency-card.priority-very-high {
+            border-left-color: #dc3545;
+            background: linear-gradient(135deg, #fff5f5 0%, #fff 100%);
+        }
+
+        .emergency-card.priority-high {
+            border-left-color: #fd7e14;
+            background: linear-gradient(135deg, #fff8f0 0%, #fff 100%);
+        }
+
+        .emergency-card.priority-medium {
+            border-left-color: #ffc107;
+            background: linear-gradient(135deg, #fffdf0 0%, #fff 100%);
+        }
+
+        .emergency-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .emergency-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .emergency-type {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .type-lost_child { background: #fff5f5; color: #dc3545; }
+        .type-medical_crowd { background: #fff8f0; color: #fd7e14; }
+        .type-crowd_safety { background: #fff5f5; color: #dc3545; }
+        .type-fire_emergency { background: #fff5f5; color: #dc3545; }
+        .type-water_emergency { background: #f0f8ff; color: #0d6efd; }
+        .type-security { background: #fffdf0; color: #ffc107; }
+        .type-weather { background: #f8f0ff; color: #6f42c1; }
+        .type-electrical { background: #fff8f0; color: #fd7e14; }
+
+        .emergency-details {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+
+        .emergency-location {
+            font-weight: 500;
+            color: #495057;
+            background: #e9ecef;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 0.5rem;
+        }
+
+        .emergency-time {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .control-panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .test-section {
+            margin-bottom: 2rem;
+        }
+
+        .test-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .test-input:focus {
+            outline: none;
+            border-color: #ff6b35;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #ff6b35, #ff8c42);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 107, 53, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #6c757d, #868e96);
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #dc3545, #e55353);
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .connection-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #dc3545;
+            animation: pulse 2s infinite;
+        }
+
+        .connection-indicator.connected {
+            background: #28a745;
+        }
+
+        .emergency-types-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .emergency-type-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            border-left: 3px solid #ddd;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ff6b35;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid #dc3545;
+        }
+
+        .no-emergencies {
+            text-align: center;
+            padding: 3rem;
+            color: #6c757d;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border: 2px dashed #dee2e6;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: rgba(255, 255, 255, 0.8);
+            margin-top: 3rem;
+        }
+
+        .realtime-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .container {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>
+            Kumbh Mela Emergency Response Dashboard
+            <span class="realtime-indicator">
+                <span class="status-indicator status-active"></span>
+                Live Monitoring
+            </span>
+        </h1>
+        <div class="subtitle">
+            Nashik Kumbh Mela 2025 • Comprehensive Emergency Management System
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Statistics Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number priority-high" id="total-calls">-</div>
+                <div class="stat-label">Total Emergency Calls</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number priority-very-high" id="active-emergencies">-</div>
+                <div class="stat-label">Active Emergencies</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number priority-medium" id="volunteers-dispatched">-</div>
+                <div class="stat-label">Volunteers Dispatched</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number priority-low" id="resolved-today">-</div>
+                <div class="stat-label">Resolved Today</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Active Emergencies -->
+            <div class="emergencies-section">
+                <div class="section-header">
+                    <h2 class="section-title">
+                        <span class="status-indicator status-active"></span>
+                        Active Emergencies
+                    </h2>
+                </div>
+                <div id="emergencies-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Loading emergency data...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="sidebar">
+                <div class="control-panel">
+                    <h3 style="margin-bottom: 1rem; color: #333;">System Control</h3>
+                    
+                    <div class="connection-status">
+                        <div class="connection-indicator" id="ws-status"></div>
+                        <span id="connection-text">Connecting...</span>
+                    </div>
+
+                    <div class="test-section">
+                        <h4 style="margin-bottom: 0.5rem; color: #555;">Test Emergency Call</h4>
+                        <textarea 
+                            class="test-input" 
+                            id="test-input" 
+                            rows="3"
+                            placeholder="Describe an emergency situation to test the system..."
+                        ></textarea>
+                        <button class="btn" onclick="sendTestEmergency()">Send Test Emergency</button>
+                        <button class="btn btn-secondary" onclick="clearEmergencies()">Clear All Emergencies</button>
+                    </div>
+
+                    <div>
+                        <h4 style="margin-bottom: 0.5rem; color: #555;">Quick Test Scenarios</h4>
+                        <button class="btn btn-danger" onclick="sendPresetEmergency('lost_child')">Lost Child Alert</button>
+                        <button class="btn btn-danger" onclick="sendPresetEmergency('medical')">Medical Emergency</button>
+                        <button class="btn btn-danger" onclick="sendPresetEmergency('crowd')">Crowd Safety Issue</button>
+                        <button class="btn btn-danger" onclick="sendPresetEmergency('fire')">Fire Emergency</button>
+                    </div>
+                </div>
+
+                <!-- Emergency Types Reference -->
+                <div class="control-panel">
+                    <h3 style="margin-bottom: 1rem; color: #333;">Emergency Types</h3>
+                    <div class="emergency-types-grid" id="emergency-types">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Real-time Statistics -->
+                <div class="control-panel">
+                    <h3 style="margin-bottom: 1rem; color: #333;">Live Statistics</h3>
+                    <div id="live-stats">
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Connected Clients:</strong>
+                            <span id="connected-clients">0</span>
+                        </div>
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Server Uptime:</strong>
+                            <span id="server-uptime">-</span>
+                        </div>
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Last Update:</strong>
+                            <span id="last-update">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>🕉️ Kumbh Mela Emergency Response System • Developed for Nashik Kumbh Mela 2025</p>
+        <p>Real-time monitoring and response coordination for all emergency types</p>
+    </footer>
+
+    <script>
+        let ws = null;
+        let emergencyTypes = {};
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        // WebSocket connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}?type=dashboard`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('Connected to Kumbh Mela Emergency System');
+                document.getElementById('ws-status').className = 'connection-indicator connected';
+                document.getElementById('connection-text').textContent = 'Connected to Emergency System';
+                reconnectAttempts = 0;
+                loadInitialData();
+            };
+            
+            ws.onmessage = function(event) {
+                const message = JSON.parse(event.data);
+                handleWebSocketMessage(message);
+            };
+            
+            ws.onclose = function() {
+                console.log('Disconnected from server');
+                document.getElementById('ws-status').className = 'connection-indicator';
+                document.getElementById('connection-text').textContent = 'Disconnected - Attempting to reconnect...';
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    setTimeout(connectWebSocket, 3000);
+                } else {
+                    document.getElementById('connection-text').textContent = 'Connection failed - Please refresh the page';
+                }
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function handleWebSocketMessage(message) {
+            console.log('Received message:', message);
+            
+            switch(message.type) {
+                case 'initial-data':
+                    updateDashboard(message.data);
+                    break;
+                case 'kumbh-emergency-update':
+                    addNewEmergency(message.data);
+                    break;
+                case 'emergency-status-update':
+                    updateEmergencyStatus(message.data);
+                    break;
+                case 'twilio-update':
+                    addNewEmergency(message.data);
+                    break;
+            }
+            
+            updateLastUpdateTime();
+        }
+
+        async function loadInitialData() {
+            try {
+                // Load dashboard data
+                const dashboardResponse = await fetch('/api/dashboard');
+                const dashboardData = await dashboardResponse.json();
+                updateDashboard(dashboardData);
+                
+                // Load emergency types
+                const typesResponse = await fetch('/api/emergency-types');
+                const typesData = await typesResponse.json();
+                emergencyTypes = typesData.types;
+                renderEmergencyTypes();
+                
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+                showError('Failed to load emergency data. Please refresh the page.');
+            }
+        }
+
+        function updateDashboard(data) {
+            // Update statistics
+            const stats = data.statistics || {};
+            document.getElementById('total-calls').textContent = stats.totalCalls || 0;
+            document.getElementById('active-emergencies').textContent = data.activeEmergencies?.length || 0;
+            document.getElementById('volunteers-dispatched').textContent = stats.volunteerDispatches || 0;
+            
+            // Calculate resolved today
+            const today = new Date().toDateString();
+            const resolvedToday = stats.dailyStats?.[today]?.calls || 0;
+            document.getElementById('resolved-today').textContent = resolvedToday;
+            
+            // Update server info
+            if (data.serverStatus) {
+                const uptime = formatUptime(data.serverStatus.uptime || 0);
+                document.getElementById('server-uptime').textContent = uptime;
+                
+                const totalClients = (data.serverStatus.connectedClients?.dashboard || 0) + 
+                                   (data.serverStatus.connectedClients?.mobileApps || 0);
+                document.getElementById('connected-clients').textContent = totalClients;
+            }
+            
+            // Render emergencies
+            renderEmergencies(data.activeEmergencies || []);
+        }
+
+        function renderEmergencies(emergencies) {
+            const container = document.getElementById('emergencies-container');
+            
+            if (!emergencies || emergencies.length === 0) {
+                container.innerHTML = `
+                    <div class="no-emergencies">
+                        <h3>✅ No Active Emergencies</h3>
+                        <p>All emergency situations are currently resolved.</p>
+                        <p style="margin-top: 1rem; font-size: 0.9rem; color: #6c757d;">
+                            Use the test panel to simulate emergency scenarios.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Sort emergencies by priority and timestamp
+            const priorityOrder = { 'very_high': 4, 'high': 3, 'medium': 2, 'low': 1 };
+            emergencies.sort((a, b) => {
+                const aPriority = priorityOrder[a.aiAnalysis?.priority || 'medium'];
+                const bPriority = priorityOrder[b.aiAnalysis?.priority || 'medium'];
+                if (aPriority !== bPriority) return bPriority - aPriority;
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            });
+            
+            container.innerHTML = emergencies.map(emergency => renderEmergencyCard(emergency)).join('');
+        }
+
+        function renderEmergencyCard(emergency) {
+            const analysis = emergency.aiAnalysis || {};
+            const priority = analysis.priority || 'medium';
+            const type = analysis.type || 'general';
+            const typeInfo = emergencyTypes[type] || { icon: '🚨', description: 'General Emergency' };
+            
+            const timeAgo = getTimeAgo(emergency.timestamp);
+            
+            return `
+                <div class="emergency-card priority-${priority}" data-id="${emergency.id}">
+                    <div class="emergency-header">
+                        <div>
+                            <div class="emergency-title">
+                                ${typeInfo.icon} ${analysis.title || 'Emergency Situation'}
+                            </div>
+                            <div class="emergency-type type-${type}">
+                                ${type.replace('_', ' ').toUpperCase()}
+                            </div>
+                        </div>
+                        <div class="emergency-time">${timeAgo}</div>
+                    </div>
+                    
+                    <div class="emergency-details">
+                        <p><strong>Summary:</strong> ${analysis.summary || 'Processing emergency details...'}</p>
+                        ${analysis.location && analysis.location !== 'Unknown' ? 
+                            `<div class="emergency-location">📍 ${analysis.location}</div>` : ''}
+                        ${analysis.name && analysis.name !== 'Unknown' ? 
+                            `<p><strong>Caller:</strong> ${analysis.name}</p>` : ''}
+                        ${analysis.emotional_state ? 
+                            `<p><strong>Caller State:</strong> <span class="priority-${getPriorityFromEmotionalState(analysis.emotional_state)}">${analysis.emotional_state.replace('_', ' ').toUpperCase()}</span></p>` : ''}
+                    </div>
+                    
+                    <div style="margin-top: 1rem;">
+                        <button class="btn" style="width: auto; margin-right: 0.5rem; margin-bottom: 0;" 
+                                onclick="resolveEmergency('${emergency.id}')">
+                            Mark Resolved
+                        </button>
+                        <button class="btn btn-secondary" style="width: auto; margin-bottom: 0;" 
+                                onclick="viewEmergencyDetails('${emergency.id}')">
+                            View Details
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderEmergencyTypes() {
+            const container = document.getElementById('emergency-types');
+            container.innerHTML = Object.entries(emergencyTypes).map(([key, type]) => `
+                <div class="emergency-type-badge" style="border-left-color: ${type.color}">
+                    <span>${type.icon}</span>
+                    <span style="font-size: 0.7rem;">${key.replace('_', ' ').toUpperCase()}</span>
+                </div>
+            `).join('');
+        }
+
+        function addNewEmergency(emergency) {
+            // Refresh the entire dashboard to get latest data
+            loadInitialData();
+            
+            // Show notification for high priority emergencies
+            const priority = emergency.aiAnalysis?.priority;
+            if (priority === 'very_high' || priority === 'high') {
+                showNotification(emergency);
+            }
+        }
+
+        function updateEmergencyStatus(emergency) {
+            loadInitialData(); // Refresh data
+        }
+
+        function showNotification(emergency) {
+            const analysis = emergency.aiAnalysis || {};
+            const typeInfo = emergencyTypes[analysis.type] || { icon: '🚨' };
+            
+            // Create notification (you could use browser notifications here)
+            console.log(`🚨 HIGH PRIORITY EMERGENCY: ${typeInfo.icon} ${analysis.title} at ${analysis.location}`);
+        }
+
+        function showError(message) {
+            const container = document.getElementById('emergencies-container');
+            container.innerHTML = `
+                <div class="error-message">
+                    <strong>Error:</strong> ${message}
+                </div>
+            `;
+        }
+
+        // Utility functions
+        function getTimeAgo(timestamp) {
+            const now = new Date();
+            const then = new Date(timestamp);
+            const diffMs = now - then;
+            const diffMins = Math.floor(diffMs / 60000);
+            
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+            return `${Math.floor(diffMins / 1440)}d ago`;
+        }
+
+        function formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return `${hours}h ${minutes}m`;
+        }
+
+        function getPriorityFromEmotionalState(state) {
+            const stateMap = {
+                'very_high': 'very_high',
+                'high': 'high',
+                'medium': 'medium',
+                'calm': 'low'
+            };
+            return stateMap[state] || 'medium';
+        }
+
+        function updateLastUpdateTime() {
+            const now = new Date().toLocaleTimeString();
+            document.getElementById('last-update').textContent = now;
+        }
+
+        // Control functions
+        async function sendTestEmergency() {
+            const input = document.getElementById('test-input').value.trim();
+            if (!input) {
+                alert('Please enter an emergency description');
+                return;
+            }
+            
+            const testData = {
+                id: `test-${Date.now()}`,
+                convo: {
+                    data: [
+                        { role: "assistant", content: "कुंभ मेला आपातकालीन सेवा - Kumbh Mela Emergency Service" },
+                        { role: "user", content: input }
+                    ]
+                },
+                emergency_details: {
+                    emergency_type: "test",
+                    priority_level: "medium",
+                    volunteer_dispatched: false
+                },
+                metadata: {
+                    source: "dashboard_test",
+                    timestamp: new Date().toISOString()
+                }
+            };
+            
+            try {
+                const response = await fetch('/kumbh-webhook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testData)
+                });
+                
+                if (response.ok) {
+                    document.getElementById('test-input').value = '';
+                    console.log('Test emergency sent successfully');
+                } else {
+                    alert('Failed to send test emergency');
+                }
+            } catch (error) {
+                console.error('Error sending test emergency:', error);
+                alert('Error sending test emergency');
+            }
+        }
+
+        async function sendPresetEmergency(type) {
+            const presetEmergencies = {
+                'lost_child': "मेरा बच्चा गुम हो गया है Ramkund के पास। My child is lost near Ramkund. उसका नाम Arjun है, 6 साल का है। His name is Arjun, 6 years old. Please help!",
+                'medical': "Someone collapsed at the main bathing area. व्यक्ति बेहोश है और सांस लेने में तकलीफ है। Person is unconscious and having breathing difficulty. Need medical help immediately!",
+                'crowd': "भगदड़ की स्थिति Gate 5 के पास। Stampede situation near Gate 5. भीड़ बहुत ज्यादा है और लोग गिर रहे हैं। Too much crowd and people are falling down!",
+                'fire': "Fire in the camping area near Niranjani Akhara. आग तेजी से फैल रही है। Fire is spreading quickly. हवा भी तेज है। Wind is also strong. Immediate help needed!"
+            };
+            
+            const description = presetEmergencies[type];
+            if (description) {
+                document.getElementById('test-input').value = description;
+                await sendTestEmergency();
+            }
+        }
+
+        async function clearEmergencies() {
+            if (!confirm('Are you sure you want to clear all test emergencies?')) {
+                return;
+            }
+            
+            try {
+                // This would typically call an API endpoint to clear emergencies
+                // For now, just refresh the data
+                await loadInitialData();
+                console.log('Emergencies cleared');
+            } catch (error) {
+                console.error('Error clearing emergencies:', error);
+            }
+        }
+
+        async function resolveEmergency(emergencyId) {
+            try {
+                const response = await fetch(`/api/emergencies/${emergencyId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: 'resolved',
+                        responseTeam: 'Dashboard Operator',
+                        notes: 'Resolved via dashboard'
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log(`Emergency ${emergencyId} resolved`);
+                    loadInitialData(); // Refresh data
+                } else {
+                    alert('Failed to resolve emergency');
+                }
+            } catch (error) {
+                console.error('Error resolving emergency:', error);
+                alert('Error resolving emergency');
+            }
+        }
+
+        async function viewEmergencyDetails(emergencyId) {
+            try {
+                const response = await fetch(`/api/emergencies/${emergencyId}`);
+                const emergency = await response.json();
+                
+                // Create a detailed view (you could use a modal here)
+                const details = JSON.stringify(emergency, null, 2);
+                alert(`Emergency Details:\n\n${details}`);
+            } catch (error) {
+                console.error('Error viewing emergency details:', error);
+                alert('Error loading emergency details');
+            }
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            connectWebSocket();
+            
+            // Set up periodic refresh
+            setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    loadInitialData();
+                }
+            }, 30000); // Refresh every 30 seconds
+            
+            // Handle keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    sendTestEmergency();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
