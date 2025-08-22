@@ -86,7 +86,7 @@ const Dashboard = () => {
             </Card>
 
             {/* Quick Actions */}
-            <Card className="h-[280px]">
+            <Card className="h-[280px] overflow-y-auto">
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2">
                   <Radio className="w-5 h-5 text-secondary" />
