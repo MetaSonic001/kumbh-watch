@@ -1,74 +1,49 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  AlertTriangle, 
-  Clock, 
-  User,
-  CheckCircle,
-  X
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+  // AlertsPanel.tsx (updated with WS)
+  import { useState, useEffect } from "react";
+  import { Button } from "@/components/ui/button";
+  import { Badge } from "@/components/ui/badge";
+  import { ScrollArea } from "@/components/ui/scroll-area";
+  import { 
+    AlertTriangle, 
+    Clock, 
+    User,
+    CheckCircle,
+    X
+  } from "lucide-react";
+  import { motion, AnimatePresence } from "framer-motion";
+  import { WS_URL } from "@/config";
 
-interface Alert {
-  id: number;
-  severity: "low" | "medium" | "high" | "critical";
-  zone: string;
-  type: string;
-  time: string;
-  description: string;
-  acknowledged: boolean;
-}
+  interface Alert {
+    id: number;
+    severity: "low" | "medium" | "high" | "critical";
+    zone: string;
+    type: string;
+    time: string;
+    description: string;
+    acknowledged: boolean;
+  }
 
-const AlertsPanel = () => {
-  const [alerts, setAlerts] = useState<Alert[]>([
-    {
-      id: 1,
-      severity: "critical",
-      zone: "Main Gate",
-      type: "Crowd Surge",
-      time: "2 mins ago",
-      description: "Sudden crowd buildup detected",
-      acknowledged: false
-    },
-    {
-      id: 2,
-      severity: "high",
-      zone: "Har Ki Pauri",
-      type: "Medical Emergency",
-      time: "5 mins ago",
-      description: "Medical assistance requested",
-      acknowledged: false
-    },
-    {
-      id: 3,
-      severity: "medium",
-      zone: "Ganga Ghat",
-      type: "Equipment Issue",
-      time: "12 mins ago",
-      description: "CCTV camera offline",
-      acknowledged: true
-    },
-    {
-      id: 4,
-      severity: "low",
-      zone: "Medical Camp",
-      type: "Routine Check",
-      time: "18 mins ago",
-      description: "Scheduled patrol completed",
-      acknowledged: true
-    },
-    {
-      id: 5,
-      severity: "high",
-      zone: "Entry Point 3",
-      type: "Security Alert",
-      time: "25 mins ago",
-      description: "Unauthorized access attempt",
-      acknowledged: false
-    }
-  ]);
+  const AlertsPanel = () => {
+    const [alerts, setAlerts] = useState<Alert[]>([]);
+
+    useEffect(() => {
+      const ws = new WebSocket(`${WS_URL}/ws/alerts`);
+      ws.onopen = () => console.log('Connected to alerts WS');
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setAlerts(prev => [...prev, {
+          id: Date.now(),
+          severity: data.severity || 'medium',
+          zone: data.camera_id || 'Unknown',
+          type: data.type,
+          time: new Date(data.timestamp).toLocaleTimeString(),
+          description: data.message,
+          acknowledged: false
+        }].slice(-50)); // Keep last 50
+      };
+      ws.onclose = () => console.log('Alerts WS closed');
+      return () => ws.close();
+    }, []);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {

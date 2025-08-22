@@ -1,89 +1,103 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { 
-  Camera, 
-  Maximize2, 
-  Volume2, 
-  VolumeX,
-  Play,
-  Pause,
-  RotateCcw,
-  Settings
-} from "lucide-react";
-import { motion } from "framer-motion";
+  // CCTVPanel.tsx (updated with WS and upload)
+  import { useState, useEffect, useRef } from "react";
+  import { Button } from "@/components/ui/button";
+  import { Badge } from "@/components/ui/badge";
+  import { Card, CardContent } from "@/components/ui/card";
+  import { Input } from "@/components/ui/input";
+  import { 
+    Camera, 
+    Maximize2, 
+    Volume2, 
+    VolumeX, 
+    Play,
+    Pause,
+    RotateCcw,
+    Settings,
+    Upload
+  } from "lucide-react";
+  import { motion } from "framer-motion";
+  import { toast } from "sonner";
+  import { API_URL, WS_URL } from "@/config";
 
-interface CCTVFeed {
-  id: number;
-  name: string;
-  location: string;
-  status: "online" | "offline" | "maintenance";
-  peopleCount: number;
-  alertLevel: "low" | "medium" | "high" | "critical";
-  lastUpdate: string;
-}
+  interface CCTVFeed {
+    id: string; // Changed to string for camera_id
+    name: string;
+    location: string;
+    status: "online" | "offline" | "maintenance";
+    peopleCount: number;
+    alertLevel: "low" | "medium" | "high" | "critical";
+    lastUpdate: string;
+    frame?: string; // base64 frame
+  }
 
-const CCTVPanel = () => {
-  const [selectedFeed, setSelectedFeed] = useState<number | null>(null);
-  const [mutedFeeds, setMutedFeeds] = useState<Set<number>>(new Set());
+  const CCTVPanel = () => {
+    const [feeds, setFeeds] = useState<CCTVFeed[]>([]);
+    const [mutedFeeds, setMutedFeeds] = useState<Set<string>>(new Set());
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const feeds: CCTVFeed[] = [
-    {
-      id: 1,
-      name: "Main Gate Camera 1",
-      location: "Entry Point",
-      status: "online",
-      peopleCount: 342,
-      alertLevel: "high",
-      lastUpdate: "Live"
-    },
-    {
-      id: 2,
-      name: "Har Ki Pauri View",
-      location: "Sacred Ghat",
-      status: "online",
-      peopleCount: 1245,
-      alertLevel: "critical",
-      lastUpdate: "Live"
-    },
-    {
-      id: 3,
-      name: "Medical Camp Monitor",
-      location: "Medical Zone",
-      status: "online",
-      peopleCount: 67,
-      alertLevel: "low",
-      lastUpdate: "Live"
-    },
-    {
-      id: 4,
-      name: "Security Checkpoint",
-      location: "Gate 3",
-      status: "maintenance",
-      peopleCount: 0,
-      alertLevel: "low",
-      lastUpdate: "Offline"
-    },
-    {
-      id: 5,
-      name: "Crowd Monitoring 5",
-      location: "Main Path",
-      status: "online",
-      peopleCount: 567,
-      alertLevel: "medium",
-      lastUpdate: "Live"
-    },
-    {
-      id: 6,
-      name: "Parking Area View",
-      location: "Vehicle Zone",
-      status: "online",
-      peopleCount: 89,
-      alertLevel: "low",
-      lastUpdate: "Live"
-    }
-  ];
+    useEffect(() => {
+      // Fetch active cameras from status
+      fetch(`${API_URL}/status`)
+        .then(res => res.json())
+        .then(data => {
+          const activeFeeds = Object.entries(data.active_cameras).map(([id, info]: any) => ({
+            id,
+            name: `Camera ${id}`,
+            location: info.source,
+            status: info.status,
+            peopleCount: info.current_count,
+            alertLevel: info.current_count > info.threshold ? 'high' : 'low',
+            lastUpdate: 'Live'
+          }));
+          setFeeds(activeFeeds);
+        });
+
+      // Connect WS for each feed
+      const wsConnections: { [key: string]: WebSocket } = {};
+      feeds.forEach(feed => {
+        if (feed.status === 'active') {
+          const ws = new WebSocket(`${WS_URL}/ws/frames/${feed.id}`);
+          wsConnections[feed.id] = ws;
+          ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === "LIVE_FRAME") {
+              setFeeds(prev => prev.map(f => f.id === feed.id ? { ...f, frame: data.frame, peopleCount: data.people_count, alertLevel: data.density_level.toLowerCase() } : f));
+            }
+          };
+        }
+      });
+
+      return () => {
+        Object.values(wsConnections).forEach(ws => ws.close());
+      };
+    }, [feeds.length]); // Re-run when feeds change
+
+    const handleUpload = (e: React.ChangeEvent<HTMLInputElement>, isVideo: boolean) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const cameraId = `upload_${Date.now()}`;
+        const threshold = 20;
+        fetch(`${API_URL}/process/${isVideo ? 'video' : 'image'}?camera_id=${cameraId}&threshold=${threshold}`, {
+          method: 'POST',
+          body: formData
+        }).then(res => res.json()).then(data => {
+          toast.success(`${isVideo ? 'Video' : 'Image'} processing started`);
+          // Add to feeds
+          setFeeds(prev => [...prev, {
+            id: cameraId,
+            name: `Uploaded ${isVideo ? 'Video' : 'Image'}`,
+            location: data.file_info.filename,
+            status: 'online',
+            peopleCount: data.analysis ? data.analysis.total_detections : 0,
+            alertLevel: 'low',
+            lastUpdate: 'Processed',
+            frame: data.annotated_image
+          }]);
+        }).catch(() => toast.error('Upload failed'));
+      }
+    };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -116,8 +130,21 @@ const CCTVPanel = () => {
     });
   };
 
-  return (
-    <div className="space-y-4">
+      return (
+      <div className="space-y-4">
+        {/* Upload buttons */}
+        <div className="flex gap-2">
+          <Button onClick={() => fileInputRef.current?.click()}>
+            <Upload className="w-4 h-4 mr-2" />
+            Upload Image
+          </Button>
+          <Input type="file" ref={fileInputRef} accept="image/*" style={{ display: 'none' }} onChange={(e) => handleUpload(e, false)} />
+          <Button onClick={() => fileInputRef.current?.click()}>
+            <Upload className="w-4 h-4 mr-2" />
+            Upload Video
+          </Button>
+          <Input type="file" ref={fileInputRef} accept="video/*" style={{ display: 'none' }} onChange={(e) => handleUpload(e, true)} />
+        </div>
       {/* Feed Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {feeds.map((feed, index) => (

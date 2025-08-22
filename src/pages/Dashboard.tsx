@@ -1,4 +1,5 @@
-import { useState } from "react";
+// Dashboard.tsx (updated)
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,20 +14,38 @@ import {
   Activity
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import LiveMap from "@/components/dashboard/LiveMap";
 import AlertsPanel from "@/components/dashboard/AlertsPanel";
 import CCTVPanel from "@/components/dashboard/CCTVPanel";
 import QuickActions from "@/components/dashboard/QuickActions";
 import StatsCards from "@/components/dashboard/StatsCards";
+import CameraManagement from "@/components/dashboard/CameraManagement"; // New component
+import { API_URL } from "@/config";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [isConnected, setIsConnected] = useState(true);
+  const [systemStatus, setSystemStatus] = useState(null);
 
-  const handleQuickAction = (action: string) => {
-    console.log(`Quick action triggered: ${action}`);
-    // Add your action handling logic here
+  useEffect(() => {
+    // Check backend connection
+    fetch(`${API_URL}/status`)
+      .then(res => res.json())
+      .then(data => {
+        setSystemStatus(data);
+        setIsConnected(true);
+      })
+      .catch(() => {
+        setIsConnected(false);
+        toast.error("Failed to connect to backend");
+      });
+  }, []);
+
+  const handleQuickAction = (action: string, details: any) => {
+    console.log(`Quick action triggered: ${action}`, details);
+    // Handled in QuickActions component
   };
 
   return (
@@ -108,6 +127,25 @@ const Dashboard = () => {
             </Card>
           </motion.div>
         </div>
+
+        {/* Camera Management Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-primary" />
+                Camera Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CameraManagement />
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {/* CCTV Feeds Section */}
         <motion.div

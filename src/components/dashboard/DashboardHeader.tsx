@@ -1,3 +1,4 @@
+// DashboardHeader.tsx (unchanged, but ensure imports are correct)
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -20,7 +21,7 @@ const DashboardHeader = () => {
 
   const navItems = [
     { label: "Dashboard", path: "/dashboard" },
-    { label: "Map Setup", path: "/map-setup" },
+    // { label: "Map Setup", path: "/map-setup" },
     { label: "Analytics", path: "/analytics" },
     { label: "Users", path: "/users" }
   ];
