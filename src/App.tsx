@@ -17,6 +17,7 @@ import CCTVSetup from "./pages/setup/CCTVSetup";
 import TeamSetup from "./pages/setup/TeamSetup";
 import SetupComplete from "./pages/setup/SetupComplete";
 import NotFound from "./pages/NotFound";
+import EmergencyDashboard from "./pages/EmergencyDashboard";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const App = () => (
               <Route path="/landing" element={<Landing />} />
               <Route path="/login" element={<Login />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/emergency" element={<EmergencyDashboard />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/users" element={<UserManagement />} />
               <Route path="/setup/wizard" element={<SetupWizard />} />
