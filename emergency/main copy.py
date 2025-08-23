@@ -69,7 +69,7 @@ class EmergencyUpdate(BaseModel):
 
 # FastAPI app
 app = FastAPI(
-    title="Kumbh Mela Emergency Voice Agent",
+    title="Kumbhh Mela Emergency Voice Agent",
     description="Emergency response system for Kumbh Mela with voice assistance and real-time alerts",
     version="2.0.0"
 )
