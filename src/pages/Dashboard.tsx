@@ -1,13 +1,13 @@
-// Dashboard.tsx (updated)
+// Dashboard.tsx (restructured for better layout)
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  MapPin, 
-  Camera, 
-  AlertTriangle, 
-  Users, 
+import {
+  MapPin,
+  Camera,
+  AlertTriangle,
+  Users,
   Radio,
   Bell,
   Shield,
@@ -34,10 +34,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     checkBackendConnection();
-    
     // Check connection every 30 seconds
     const interval = setInterval(checkBackendConnection, 30000);
-    
     return () => clearInterval(interval);
   }, []);
 
@@ -62,7 +60,6 @@ const Dashboard = () => {
     try {
       const result = await backendService.testConnection();
       console.log('🔍 Connection test result:', result);
-      
       if (result.status === 'success') {
         toast.success('Backend connection test successful!', {
           description: `Version: ${result.details.version}`
@@ -83,7 +80,6 @@ const Dashboard = () => {
     try {
       const result = await backendService.testZonesEndpoint();
       console.log('🔍 Zones endpoint test result:', result);
-      
       if (result.status === 'success') {
         toast.success('Zones endpoint test successful!', {
           description: `Found ${result.details.zones_count} zones`
@@ -102,7 +98,6 @@ const Dashboard = () => {
 
   const handleQuickAction = (action: string, details: any) => {
     console.log(`Quick action triggered: ${action}`, details);
-    
     switch (action) {
       case 'refresh':
         checkBackendConnection();
@@ -148,213 +143,205 @@ const Dashboard = () => {
     <div className="min-h-screen bg-background">
       <DashboardHeader />
       
-      <div className="container mx-auto p-6 space-y-6">
-        {/* Connection Status Bar */}
+      <div className="container mx-auto p-4 space-y-4">
+        {/* Connection Status Bar - Compact */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between p-4 bg-card border rounded-lg"
+          className="flex items-center justify-between p-3 bg-card border rounded-lg"
         >
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-lg">{connectionStatus.icon}</span>
-              <span className={`font-medium ${connectionStatus.color}`}>
+              <span className="text-sm">{connectionStatus.icon}</span>
+              <span className={`font-medium text-sm ${connectionStatus.color}`}>
                 {connectionStatus.text}
               </span>
             </div>
-            
             {systemStatus && (
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span>Active Cameras: {Object.keys(systemStatus.active_cameras || {}).length}</span>
-                <span>Last Update: {lastUpdate.toLocaleTimeString()}</span>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Cameras: {Object.keys(systemStatus.active_cameras || {}).length}</span>
+                <span>Updated: {lastUpdate.toLocaleTimeString()}</span>
               </div>
             )}
           </div>
           
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={checkBackendConnection}
-            disabled={isConnected}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isConnected ? '' : 'animate-spin'}`} />
-            {isConnected ? 'Connected' : 'Reconnect'}
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={testBackendConnection}
-          >
-            🧪 Test Connection
-          </Button>
-          
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={testZonesEndpoint}
-          >
-            🗺️ Test Zones
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={checkBackendConnection}>
+              <RefreshCw className={`w-3 h-3 mr-1 ${!isConnected ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+            <Button variant="outline" size="sm" onClick={testBackendConnection}>
+              🧪 Test
+            </Button>
+            <Button variant="outline" size="sm" onClick={testZonesEndpoint}>
+              🗺️ Zones
+            </Button>
+          </div>
         </motion.div>
 
-        {/* Stats Overview */}
+        {/* Stats Overview - Compact */}
         <StatsCards />
 
-        {/* Main Dashboard Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-          {/* Main Content - Live Map and CCTV */}
+        {/* Main Dashboard Grid - Optimized Layout */}
+        <div className="grid grid-cols-12 gap-4">
+          
+          {/* Left Column - Map (Primary Focus) */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="xl:col-span-3 space-y-6"
+            className="col-span-12 lg:col-span-7 xl:col-span-8"
           >
-            {/* Live Map */}
-            <Card className="h-[400px]">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2">
+            <Card className="h-[500px]">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <MapPin className="w-5 h-5 text-primary" />
                   Live Crowd Map
-                  <Badge variant="outline" className="ml-auto">
+                  <Badge variant="outline" className="ml-auto text-xs">
                     Real-time
                   </Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="h-[calc(100%-80px)]">
+              <CardContent className="h-[calc(100%-60px)] p-3">
                 <LiveMap />
-              </CardContent>
-            </Card>
-
-            {/* CCTV Feeds Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Camera className="w-5 h-5 text-primary" />
-                  Live CCTV Feeds
-                  <Badge variant="outline" className="ml-auto">
-                    {systemStatus?.active_cameras ? Object.keys(systemStatus.active_cameras).length : 0} Active
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CCTVPanel />
               </CardContent>
             </Card>
           </motion.div>
 
-          {/* Side Panels */}
+          {/* Right Column - Alerts & Re-routing */}
           <motion.div
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="space-y-6"
+            className="col-span-12 lg:col-span-5 xl:col-span-4 space-y-4"
           >
-            {/* Alerts Panel */}
-            <Card className="h-[400px]">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-warning" />
+            
+            {/* Alerts Panel - Top Priority */}
+            <Card className="h-[240px]">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <AlertTriangle className="w-4 h-4 text-warning" />
                   Live Alerts
-                  <Badge variant="destructive" className="ml-auto">
-                    Real-time
+                  <Badge variant="destructive" className="ml-auto text-xs">
+                    Active
                   </Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="h-[calc(100%-80px)] overflow-hidden">
+              <CardContent className="h-[calc(100%-50px)] p-3 overflow-hidden">
                 <AlertsPanel />
               </CardContent>
             </Card>
 
-            {/* Smart Re-Routing */}
-            <Card className="h-[500px] overflow-y-auto">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-secondary" />
+            {/* Smart Re-Routing - Second Priority */}
+            <Card className="h-[240px]">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Users className="w-4 h-4 text-secondary" />
                   Smart Re-Routing
+                  <Badge variant="outline" className="ml-auto text-xs">
+                    AI-Powered
+                  </Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="h-[calc(100%-50px)] p-3 overflow-y-auto">
                 <SmartReRouting onAlertSent={handleAlertSent} />
               </CardContent>
             </Card>
           </motion.div>
         </div>
 
-        {/* Camera Management Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-        >
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Camera className="w-5 h-5 text-primary" />
-                Camera Management
-                <Badge variant="outline" className="ml-auto">
-                  {isConnected ? 'Online' : 'Offline'}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CameraManagement />
-            </CardContent>
-          </Card>
-        </motion.div>
+        {/* Bottom Section - CCTV & Camera Management */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          
+          {/* CCTV Feeds - Compact Version */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+          >
+            <Card className="h-auto">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Camera className="w-4 h-4 text-primary" />
+                  Live CCTV Feeds
+                  <Badge variant="outline" className="ml-auto text-xs">
+                    {systemStatus?.active_cameras ? Object.keys(systemStatus.active_cameras).length : 0} Active
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="h-[calc(100%-50px)] p-3">
+                <CCTVPanel />
+              </CardContent>
+            </Card>
+          </motion.div>
 
-        {/* System Status Footer */}
+          {/* Camera Management - Compact Version */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+          >
+            <Card className="h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Camera className="w-4 h-4 text-primary" />
+                  Camera Management
+                  <Badge variant="outline" className="ml-auto text-xs">
+                    {isConnected ? 'Online' : 'Offline'}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className=" p-3 overflow-y-auto">
+                <CameraManagement />
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* System Status Footer - Compact */}
         {systemStatus && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
           >
             <Card className="bg-muted/30">
-              <CardContent className="p-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-primary">
+              <CardContent className="p-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div>
+                    <div className="text-xl font-bold text-primary">
                       {Object.keys(systemStatus.active_cameras || {}).length}
                     </div>
-                    <div className="text-muted-foreground">Active Cameras</div>
+                    <div className="text-xs text-muted-foreground">Active Cameras</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-secondary">
+                  <div>
+                    <div className="text-xl font-bold text-secondary">
                       {systemStatus.websocket_connections?.alerts || 0}
                     </div>
-                    <div className="text-muted-foreground">Alert Subscribers</div>
+                    <div className="text-xs text-muted-foreground">Alert Subscribers</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-accent">
-                      {systemStatus.websocket_connections?.frames ? 
-                        Object.values(systemStatus.websocket_connections.frames as Record<string, number>).reduce((sum: number, count: number) => sum + count, 0) : 
+                  <div>
+                    <div className="text-xl font-bold text-accent">
+                      {systemStatus.websocket_connections?.frames ?
+                        Object.values(systemStatus.websocket_connections.frames as Record<string, number>).reduce((sum: number, count: number) => sum + count, 0) :
                         0
                       }
                     </div>
-                    <div className="text-muted-foreground">Frame Subscribers</div>
+                    <div className="text-xs text-muted-foreground">Frame Subscribers</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-success">
+                  <div>
+                    <div className="text-xl font-bold text-success">
                       {systemStatus.models_loaded ? '✅' : '❌'}
                     </div>
-                    <div className="text-muted-foreground">AI Models</div>
+                    <div className="text-xs text-muted-foreground">AI Models</div>
                   </div>
                 </div>
                 
-                {/* Additional Backend Info */}
-                <div className="mt-4 pt-4 border-t">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                    <div>
-                      <span className="font-medium">Python Version:</span> {systemStatus.system_info?.python_version || 'Unknown'}
-                    </div>
-                    <div>
-                      <span className="font-medium">OpenCV:</span> {systemStatus.system_info?.opencv_version || 'Unknown'}
-                    </div>
-                    <div>
-                      <span className="font-medium">CUDA:</span> {systemStatus.system_info?.torch_available ? 'Available' : 'Not Available'}
-                    </div>
-                  </div>
+                {/* System Info - Single Line */}
+                <div className="mt-3 pt-3 border-t flex justify-center gap-6 text-xs text-muted-foreground">
+                  <span>Python: {systemStatus.system_info?.python_version || 'Unknown'}</span>
+                  <span>OpenCV: {systemStatus.system_info?.opencv_version || 'Unknown'}</span>
+                  <span>CUDA: {systemStatus.system_info?.torch_available ? '✅' : '❌'}</span>
                 </div>
               </CardContent>
             </Card>
