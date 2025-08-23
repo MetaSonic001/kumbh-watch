@@ -1,4 +1,5 @@
 "use client"
+import { Link } from "react-router-dom";
 
 import { useState } from "react"
 import {
@@ -240,14 +241,19 @@ const Landing = () => {
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <button className="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
+             <Link to="/login">
+ <button className="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-orange-600 transition-colors">
                 Sign In
               </button>
+              </Link>
+                        <Link to="/login">
+
               <button className="px-4 sm:px-6 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all shadow-lg flex items-center gap-2 text-sm">
                 <span className="hidden sm:inline">Get Started</span>
                 <span className="sm:hidden">Start</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
+              </Link>
             </div>
           </div>
         </div>

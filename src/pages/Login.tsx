@@ -22,7 +22,7 @@ const Login = () => {
     setTimeout(() => {
       if (credentials.username && credentials.password) {
         toast.success("Login successful! Starting session...");
-        navigate("/dashboard");
+        navigate("/setup/wizard");
       } else {
         toast.error("Please enter valid credentials");
       }
