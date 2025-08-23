@@ -81,16 +81,16 @@ const SmartReRouting = ({ onAlertSent }: SmartReRoutingProps) => {
     try {
       // Create alert data for deduplication check
       const alertData: AlertData = {
-        id: `rerouting_${suggestion.from_zone}_${suggestion.to_zone}_${Date.now()}`,
+        id: `rerouting_${suggestion.crowd_conditions.from_zone.zone_name}_${suggestion.crowd_conditions.to_zone.zone_name}_${Date.now()}`,
         type: 'crowd_rerouting',
         severity: suggestion.urgency === 'critical' ? 'CRITICAL' : 'HIGH',
-        message: `🚨 CROWD MANAGEMENT ALERT: ${suggestion.reason} Please redirect to ${suggestion.to_zone} for better crowd conditions. Estimated wait time: ${suggestion.estimated_wait_time} minutes.`,
+        message: `🚨 CROWD MANAGEMENT ALERT: ${suggestion.reason} Please redirect to ${suggestion.crowd_conditions.to_zone.zone_name} for better crowd conditions. Estimated wait time: ${suggestion.estimated_wait_time} minutes.`,
         timestamp: new Date().toISOString(),
         camera_id: 'system',
         anomaly_type: 'crowd_overflow',
         location: {
-          from_zone: suggestion.from_zone,
-          to_zone: suggestion.to_zone
+          from_zone: suggestion.crowd_conditions.from_zone.zone_name,
+          to_zone: suggestion.crowd_conditions.to_zone.zone_name
         }
       };
 
@@ -122,7 +122,7 @@ const SmartReRouting = ({ onAlertSent }: SmartReRoutingProps) => {
       }
 
       toast.success('Re-routing alert sent successfully!', {
-        description: `Redirecting crowd from ${suggestion.from_zone} to ${suggestion.to_zone}`
+        description: `Redirecting crowd from ${suggestion.crowd_conditions.from_zone.zone_name} to ${suggestion.crowd_conditions.to_zone.zone_name}`
       });
 
       // Refresh suggestions
@@ -245,7 +245,7 @@ const SmartReRouting = ({ onAlertSent }: SmartReRoutingProps) => {
           ) : (
             suggestions.map((suggestion, index) => (
               <motion.div
-                key={`${suggestion.from_zone}_${suggestion.to_zone}_${index}`}
+                key={`${suggestion.crowd_conditions.from_zone.zone_name}_${suggestion.crowd_conditions.to_zone.zone_name}_${index}`}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
@@ -257,7 +257,7 @@ const SmartReRouting = ({ onAlertSent }: SmartReRoutingProps) => {
                   <div className="flex items-center gap-2">
                     {getUrgencyIcon(suggestion.urgency)}
                     <span className="font-medium text-sm">
-                      {suggestion.from_zone} → {suggestion.to_zone}
+                      {suggestion.crowd_conditions.from_zone.zone_name} → {suggestion.crowd_conditions.to_zone.zone_name}
                     </span>
                     <Badge 
                       variant="outline" 

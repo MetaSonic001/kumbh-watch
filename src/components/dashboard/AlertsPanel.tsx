@@ -94,8 +94,8 @@ const AlertsPanel = () => {
         if (dedupResult.shouldSend) {
           // Mark alert as sent in the service
           alertService.markAlertSent(newAlert);
-          
-          // Add to alerts list
+  
+          // Add to alerts list (ONLY non-duplicates)
           setAlerts(prev => [newAlert, ...prev.slice(0, 9)]); // Keep last 10 alerts
           setUnreadCount(prev => prev + 1);
 
@@ -107,11 +107,9 @@ const AlertsPanel = () => {
             });
           }
         } else {
-          // Log blocked duplicate
+          // Log blocked duplicate - DON'T add to UI
           console.log(`🚫 Duplicate alert blocked: ${newAlert.type} (${newAlert.camera_id || 'unknown'}) - ${dedupResult.reason}`);
-          
-          // Still add to list but mark as duplicate
-          setAlerts(prev => [newAlert, ...prev.slice(0, 9)]);
+          // Note: We're NOT adding duplicates to the alerts list anymore
         }
 
         // Update deduplication stats
@@ -142,12 +140,11 @@ const AlertsPanel = () => {
   // Update deduplication statistics
   const updateDeduplicationStats = () => {
     const stats = alertService.getAlertStats();
-    const blockedCount = alerts.filter(alert => alert.deduplicationStatus?.isDuplicate).length;
-    
+  
     setDeduplicationStats({
       totalAlerts: stats.totalAlerts,
       uniqueTypes: stats.uniqueTypes,
-      blockedDuplicates: blockedCount
+      blockedDuplicates: 0 // blockedDuplicates not available in stats, set to 0 or update service
     });
   };
 
@@ -258,20 +255,10 @@ const AlertsPanel = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className={`relative p-3 rounded-lg border transition-all ${
-                  alert.deduplicationStatus?.isDuplicate 
-                    ? 'bg-muted/30 border-muted opacity-75' 
-                    : 'bg-card hover:bg-muted/50'
-                }`}
+                className="relative p-3 rounded-lg border transition-all bg-card hover:bg-muted/50"
+
               >
-                {/* Duplicate Indicator */}
-                {alert.deduplicationStatus?.isDuplicate && (
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="text-xs">
-                      🚫 Duplicate
-                    </Badge>
-                  </div>
-                )}
+               
 
                 {/* Alert Header */}
                 <div className="flex items-start justify-between mb-2">
@@ -320,15 +307,7 @@ const AlertsPanel = () => {
                   </span>
                 </div>
 
-                {/* Deduplication Reason (for duplicates) */}
-                {alert.deduplicationStatus?.isDuplicate && (
-                  <div className="mt-2 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Info className="w-3 h-3" />
-                      {alert.deduplicationStatus.reason}
-                    </div>
-                  </div>
-                )}
+                
               </motion.div>
             ))
           )}
