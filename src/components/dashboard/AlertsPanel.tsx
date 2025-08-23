@@ -10,11 +10,15 @@ import {
   Bell,
   X,
   ExternalLink,
-  Clock
+  Clock,
+  Shield,
+  Info,
+  Camera
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { WS_URL, API_URL } from "@/config";
+import { alertService, AlertData } from "@/services/alertService";
 
 interface Alert {
   id: string;
@@ -27,12 +31,23 @@ interface Alert {
   threshold?: number;
   location?: any;
   anomaly_type?: string;
+  hash?: string;
+  deduplicationStatus?: {
+    shouldSend: boolean;
+    reason: string;
+    isDuplicate: boolean;
+  };
 }
 
 const AlertsPanel = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [deduplicationStats, setDeduplicationStats] = useState({
+    totalAlerts: 0,
+    uniqueTypes: 0,
+    blockedDuplicates: 0
+  });
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -66,16 +81,42 @@ const AlertsPanel = () => {
           anomaly_type: data.anomaly_type
         };
 
-        setAlerts(prev => [newAlert, ...prev.slice(0, 9)]); // Keep last 10 alerts
-        setUnreadCount(prev => prev + 1);
+        // Check if alert should be sent (deduplication)
+        const dedupResult = alertService.shouldSendAlert(newAlert);
+        const isDuplicate = !dedupResult.shouldSend;
+        
+        newAlert.deduplicationStatus = {
+          shouldSend: dedupResult.shouldSend,
+          reason: dedupResult.reason,
+          isDuplicate
+        };
 
-        // Show toast for high priority alerts
-        if (data.severity === 'CRITICAL' || data.severity === 'HIGH') {
-          toast.error(data.message, {
-            description: `Camera: ${data.camera_id || 'Unknown'}`,
-            duration: 5000
-          });
+        if (dedupResult.shouldSend) {
+          // Mark alert as sent in the service
+          alertService.markAlertSent(newAlert);
+          
+          // Add to alerts list
+          setAlerts(prev => [newAlert, ...prev.slice(0, 9)]); // Keep last 10 alerts
+          setUnreadCount(prev => prev + 1);
+
+          // Show toast for high priority alerts
+          if (data.severity === 'CRITICAL' || data.severity === 'HIGH') {
+            toast.error(data.message, {
+              description: `Camera: ${data.camera_id || 'Unknown'}`,
+              duration: 5000
+            });
+          }
+        } else {
+          // Log blocked duplicate
+          console.log(`🚫 Duplicate alert blocked: ${newAlert.type} (${newAlert.camera_id || 'unknown'}) - ${dedupResult.reason}`);
+          
+          // Still add to list but mark as duplicate
+          setAlerts(prev => [newAlert, ...prev.slice(0, 9)]);
         }
+
+        // Update deduplication stats
+        updateDeduplicationStats();
+        
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
@@ -98,131 +139,84 @@ const AlertsPanel = () => {
     };
   }, []);
 
+  // Update deduplication statistics
+  const updateDeduplicationStats = () => {
+    const stats = alertService.getAlertStats();
+    const blockedCount = alerts.filter(alert => alert.deduplicationStatus?.isDuplicate).length;
+    
+    setDeduplicationStats({
+      totalAlerts: stats.totalAlerts,
+      uniqueTypes: stats.uniqueTypes,
+      blockedDuplicates: blockedCount
+    });
+  };
+
+  // Update stats periodically
+  useEffect(() => {
+    const interval = setInterval(updateDeduplicationStats, 10000); // Every 10 seconds
+    return () => clearInterval(interval);
+  }, [alerts]);
+
+  const clearAlert = (alertId: string) => {
+    setAlerts(prev => prev.filter(alert => alert.id !== alertId));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
+
+  const clearAllAlerts = () => {
+    setAlerts([]);
+    setUnreadCount(0);
+    toast.success('All alerts cleared');
+  };
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity.toUpperCase()) {
+      case 'CRITICAL':
+        return 'text-red-600 bg-red-100 border-red-200';
+      case 'HIGH':
+        return 'text-orange-600 bg-orange-100 border-orange-200';
+      case 'MEDIUM':
+        return 'text-yellow-600 bg-yellow-100 border-yellow-200';
+      case 'LOW':
+        return 'text-blue-600 bg-blue-100 border-blue-200';
+      default:
+        return 'text-gray-600 bg-gray-100 border-gray-200';
+    }
+  };
+
   const getAlertIcon = (type: string) => {
-    switch (type) {
-      case 'THRESHOLD_BREACH':
-      case 'LIVE_COUNT_UPDATE':
+    switch (type.toLowerCase()) {
+      case 'crowd_density':
         return <Users className="w-4 h-4" />;
-      case 'ANOMALY_ALERT':
+      case 'anomaly':
         return <AlertTriangle className="w-4 h-4" />;
-      case 'EMERGENCY_ALERT':
+      case 'fire':
         return <Flame className="w-4 h-4" />;
-      case 'FALLEN_PERSON':
+      case 'unauthorized':
         return <UserCheck className="w-4 h-4" />;
       default:
         return <Bell className="w-4 h-4" />;
     }
   };
 
-  const getSeverityColor = (severity: string) => {
-    switch (severity.toUpperCase()) {
-      case 'CRITICAL':
-        return 'bg-destructive text-destructive-foreground';
-      case 'HIGH':
-        return 'bg-warning text-warning-foreground';
-      case 'MEDIUM':
-        return 'bg-secondary text-secondary-foreground';
-      case 'LOW':
-        return 'bg-success text-success-foreground';
-      default:
-        return 'bg-muted text-muted-foreground';
-    }
-  };
-
-  const getAlertTypeLabel = (type: string) => {
-    switch (type) {
-      case 'THRESHOLD_BREACH':
-        return 'Threshold Breach';
-      case 'LIVE_COUNT_UPDATE':
-        return 'Count Update';
-      case 'ANOMALY_ALERT':
-        return 'Anomaly Detected';
-      case 'EMERGENCY_ALERT':
-        return 'Emergency';
-      case 'HEATMAP_ALERT':
-        return 'Heatmap Update';
-      default:
-        return type.replace(/_/g, ' ');
-    }
-  };
-
-  const formatTimestamp = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      
-      const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `${diffHours}h ago`;
-      
-      return date.toLocaleDateString();
-    } catch {
-      return 'Unknown';
-    }
-  };
-
-  const handleDismissAlert = (alertId: string) => {
-    setAlerts(prev => prev.filter(alert => alert.id !== alertId));
-    setUnreadCount(prev => Math.max(0, prev - 1));
-  };
-
-  const handleClearAll = () => {
-    setAlerts([]);
-    setUnreadCount(0);
-  };
-
-  const handleEmergencyResponse = async (alert: Alert) => {
-    try {
-      const response = await fetch(`${API_URL}/emergency`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          emergency_type: 'SECURITY',
-          message: `Response to: ${alert.message}`,
-          location: alert.location?.description || 'Unknown location',
-          priority: alert.severity,
-          camera_id: alert.camera_id || 'unknown'
-        })
-      });
-
-      if (response.ok) {
-        toast.success('Emergency response initiated');
-      } else {
-        throw new Error('Failed to initiate response');
-      }
-    } catch (error) {
-      toast.error('Failed to initiate emergency response');
-      console.error(error);
-    }
-  };
-
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="h-full flex flex-col">
+      {/* Header with Stats */}
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-success' : 'bg-destructive'} animate-pulse`}></div>
-          <span className="text-sm text-muted-foreground">
-            {isConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {unreadCount > 0 && (
-            <Badge variant="destructive" className="text-xs">
-              {unreadCount}
+          <Badge variant="outline" className="text-xs">
+            {unreadCount} New
+          </Badge>
+          {deduplicationStats.blockedDuplicates > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              🚫 {deduplicationStats.blockedDuplicates} Blocked
             </Badge>
           )}
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={handleClearAll}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearAllAlerts}
             className="h-6 px-2 text-xs"
           >
             Clear All
@@ -230,96 +224,111 @@ const AlertsPanel = () => {
         </div>
       </div>
 
+      {/* Deduplication Info */}
+      {deduplicationStats.totalAlerts > 0 && (
+        <div className="mb-3 p-2 bg-muted/50 rounded-md text-xs">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Shield className="w-3 h-3" />
+            <span>Deduplication Active</span>
+            <span>•</span>
+            <span>{deduplicationStats.uniqueTypes} unique alerts</span>
+            <span>•</span>
+            <span>{deduplicationStats.blockedDuplicates} duplicates blocked</span>
+          </div>
+        </div>
+      )}
+
       {/* Alerts List */}
-      <div className="space-y-2 max-h-48 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto space-y-2">
         <AnimatePresence>
           {alerts.length === 0 ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-center py-8 text-muted-foreground"
+              className="text-center text-muted-foreground py-8"
             >
               <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No alerts yet</p>
-              <p className="text-xs">Alerts will appear here in real-time</p>
+              <p className="text-sm">No alerts at the moment</p>
+              <p className="text-xs">System is monitoring for any issues</p>
             </motion.div>
           ) : (
-            alerts.map((alert, index) => (
+            alerts.map((alert) => (
               <motion.div
                 key={alert.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                transition={{ duration: 0.2, delay: index * 0.05 }}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`relative p-3 rounded-lg border transition-all ${
+                  alert.deduplicationStatus?.isDuplicate 
+                    ? 'bg-muted/30 border-muted opacity-75' 
+                    : 'bg-card hover:bg-muted/50'
+                }`}
               >
-                <Card className="border-l-4 border-l-primary hover:shadow-md transition-all duration-200">
-                  <CardContent className="p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2 flex-1">
-                        <div className="mt-1">
-                          {getAlertIcon(alert.type)}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge 
-                              variant="outline" 
-                              className={`text-xs ${getSeverityColor(alert.severity)}`}
-                            >
-                              {getAlertTypeLabel(alert.type)}
-                            </Badge>
-                            
-                            {alert.camera_id && (
-                              <Badge variant="outline" className="text-xs">
-                                Cam {alert.camera_id}
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          <p className="text-sm font-medium leading-tight mb-1">
-                            {alert.message}
-                          </p>
-                          
-                          {alert.people_count !== undefined && (
-                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                              <span>Count: {alert.people_count}</span>
-                              {alert.threshold && (
-                                <span>Threshold: {alert.threshold}</span>
-                              )}
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            <span>{formatTimestamp(alert.timestamp)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-1">
-                        {alert.severity === 'CRITICAL' && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleEmergencyResponse(alert)}
-                            className="h-6 px-2 text-xs"
-                          >
-                            Respond
-                          </Button>
-                        )}
-                        
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDismissAlert(alert.id)}
-                          className="h-6 w-6 p-0"
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
+                {/* Duplicate Indicator */}
+                {alert.deduplicationStatus?.isDuplicate && (
+                  <div className="absolute top-2 right-2">
+                    <Badge variant="secondary" className="text-xs">
+                      🚫 Duplicate
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Alert Header */}
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    {getAlertIcon(alert.type)}
+                    <span className="font-medium text-sm">{alert.type.replace(/_/g, ' ')}</span>
+                    <Badge 
+                      variant="outline" 
+                      className={`text-xs ${getSeverityColor(alert.severity)}`}
+                    >
+                      {alert.severity}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => clearAlert(alert.id)}
+                    className="h-5 w-5 p-0 hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+
+                {/* Alert Message */}
+                <p className="text-sm text-foreground mb-2">{alert.message}</p>
+
+                {/* Alert Details */}
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <div className="flex items-center gap-4">
+                    {alert.camera_id && (
+                      <span className="flex items-center gap-1">
+                        <Camera className="w-3 h-3" />
+                        {alert.camera_id}
+                      </span>
+                    )}
+                    {alert.people_count && (
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {alert.people_count} people
+                      </span>
+                    )}
+                  </div>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {new Date(alert.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+
+                {/* Deduplication Reason (for duplicates) */}
+                {alert.deduplicationStatus?.isDuplicate && (
+                  <div className="mt-2 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <Info className="w-3 h-3" />
+                      {alert.deduplicationStatus.reason}
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                )}
               </motion.div>
             ))
           )}
@@ -327,13 +336,16 @@ const AlertsPanel = () => {
       </div>
 
       {/* Connection Status */}
-      {!isConnected && (
-        <div className="text-center py-2">
-          <Badge variant="outline" className="text-destructive border-destructive">
-            Reconnecting to backend...
-          </Badge>
+      <div className="mt-3 pt-2 border-t">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">
+            {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+          </span>
+          <span className="text-muted-foreground">
+            {alerts.length} alerts
+          </span>
         </div>
-      )}
+      </div>
     </div>
   );
 };
