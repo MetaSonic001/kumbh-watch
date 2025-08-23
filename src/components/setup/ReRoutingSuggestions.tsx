@@ -48,20 +48,20 @@ const ReRoutingSuggestions = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Load crowd flow data for all zones
-      const flowData = await backendService.getCrowdFlowData();
-      setCrowdFlowData(flowData);
+      const flowData = await backendService.getZonesWithHeatmap();
+      setCrowdFlowData(flowData || []); // ADD: Handle null/undefined
 
-      // Load re-routing suggestions
       if (currentZoneId) {
         const zoneSuggestions = await backendService.getReRoutingSuggestions(currentZoneId);
-        setSuggestions(zoneSuggestions);
+        setSuggestions(zoneSuggestions || []); // ADD: Handle null/undefined
       } else if (showAllSuggestions) {
         const allSuggestions = await backendService.getReRoutingSuggestions();
-        setSuggestions(allSuggestions);
+        setSuggestions(allSuggestions || []); // ADD: Handle null/undefined
       }
     } catch (error) {
       console.error('Failed to load re-routing data:', error);
+      setSuggestions([]); // ADD: Set empty array on error
+      setCrowdFlowData([]); // ADD: Set empty array on error
       toast.error('Failed to load re-routing suggestions');
     } finally {
       setIsLoading(false);

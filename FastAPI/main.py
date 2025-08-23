@@ -81,6 +81,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
+
+
 # Global configuration
 CONFIG = {
     "models": {
@@ -148,6 +150,9 @@ class FrameAnalysis:
     density_level: str
     anomalies: List[dict]
     heatmap_data: Optional[dict] = None
+
+# if not hasattr(state, 'crowd_flow_data'):
+#     state.crowd_flow_data = {}
 
 # Load AI models
 async def load_models():
@@ -423,6 +428,33 @@ class HeatmapGenerator:
             "last_update": datetime.now().isoformat() + "Z"
         }
 
+if not hasattr(state, 'crowd_flow_data'):
+    state.crowd_flow_data = {}
+    
+
+def populate_mock_crowd_data():
+    """Populate mock crowd flow data for testing"""
+    state.crowd_flow_data = {
+        "zone_1": {
+            "zone_id": "zone_1",
+            "zone_name": "Main Entrance",
+            "people_count": 150,
+            "occupancy_percentage": 85,
+            "density_level": "HIGH",
+            "trend": "increasing"
+        },
+        "zone_2": {
+            "zone_id": "zone_2", 
+            "zone_name": "Food Court",
+            "people_count": 45,
+            "occupancy_percentage": 30,
+            "density_level": "LOW",
+            "trend": "stable"
+        }
+    }
+
+
+    
 # Enhanced FrameProcessor with Zone-Aware Heatmap
 class FrameProcessor:
     def __init__(self, camera_id: str, source: str, threshold: int = 20, zone_id: str = None):
@@ -1819,8 +1851,11 @@ async def get_zone_crowd_flow(zone_id: str):
 async def get_re_routing_suggestions(zone_id: str = Query(None, description="Zone ID to get suggestions for")):
     """Get re-routing suggestions"""
     try:
+        # ADD THIS CHECK AT THE BEGINNING
+        if not hasattr(state, 'crowd_flow_data') or not state.crowd_flow_data:
+            return []  # Return empty list instead of error
+        
         if zone_id:
-            # Get suggestions for specific zone
             if zone_id not in state.crowd_flow_data:
                 raise HTTPException(status_code=404, detail="Zone not found")
             
@@ -1828,7 +1863,6 @@ async def get_re_routing_suggestions(zone_id: str = Query(None, description="Zon
             suggestions = _generate_re_routing_suggestions(current_zone, list(state.crowd_flow_data.values()))
             return suggestions
         else:
-            # Get all suggestions
             all_suggestions = []
             for zone_id, zone_data in state.crowd_flow_data.items():
                 if zone_data["density_level"] in ["HIGH", "CRITICAL"]:
@@ -1890,12 +1924,16 @@ def _generate_re_routing_suggestions(current_zone: dict, all_zones: list) -> lis
     """Generate re-routing suggestions for a zone"""
     suggestions = []
     
-    # Filter candidate zones (exclude current and critical ones)
+    #  ADD THIS CHECK
+    if not all_zones or not current_zone:
+        return []
+    
+    # Filter candidate zones
     candidate_zones = [
         zone for zone in all_zones 
-        if zone["zone_id"] != current_zone["zone_id"] 
-        and zone["density_level"] != "CRITICAL"
-        and zone["occupancy_percentage"] < 90
+        if zone.get("zone_id") != current_zone.get("zone_id")  # CHANGE: Use .get() instead of direct access
+        and zone.get("density_level") != "CRITICAL"
+        and zone.get("occupancy_percentage", 0) < 90
     ]
     
     # Sort by optimal conditions
@@ -1913,22 +1951,27 @@ def _generate_re_routing_suggestions(current_zone: dict, all_zones: list) -> lis
 
 def _create_re_routing_suggestion(from_zone: dict, to_zone: dict) -> dict:
     """Create a re-routing suggestion between two zones"""
+    
+    # ADD VALIDATION
+    if not from_zone or not to_zone:
+        return {}
+    
     urgency = _calculate_urgency(from_zone, to_zone)
     estimated_wait_time = _estimate_wait_time(to_zone)
     
     return {
-        "from_zone": from_zone["zone_id"],
-        "to_zone": to_zone["zone_id"],
+        "from_zone": from_zone.get("zone_id", "unknown"),  # CHANGE: Use .get()
+        "to_zone": to_zone.get("zone_id", "unknown"),
         "reason": _generate_re_routing_reason(from_zone, to_zone),
         "urgency": urgency,
         "estimated_wait_time": estimated_wait_time,
-        "alternative_routes": _find_alternative_routes(from_zone["zone_id"], to_zone["zone_id"], [from_zone, to_zone]),
+        "alternative_routes": _find_alternative_routes(from_zone.get("zone_id"), to_zone.get("zone_id"), [from_zone, to_zone]),
         "crowd_conditions": {
             "from_zone": from_zone,
             "to_zone": to_zone
         }
     }
-
+    
 def _calculate_urgency(from_zone: dict, to_zone: dict) -> str:
     """Calculate urgency level for re-routing"""
     from_density = from_zone["density_level"]
@@ -2002,3 +2045,6 @@ def _create_content_hash(data: dict) -> str:
 # ============================================================================
 # UPDATED FRAME PROCESSOR WITH IMPROVED ALERT SYSTEM
 # ============================================================================
+
+# CALL THIS when your FastAPI app starts
+# populate_mock_crowd_data()

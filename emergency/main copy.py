@@ -20,15 +20,6 @@ from twilio.twiml.voice_response import VoiceResponse, Gather
 # Load environment variables
 load_dotenv()
 
-
-# Add these environment variables after your existing configuration
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default to Rachel voice
-# Initialize ElevenLabs
-if ELEVENLABS_API_KEY:
-    set_api_key(ELEVENLABS_API_KEY)
-    
-    
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -321,29 +312,6 @@ async def get_emergency_response(query: str, session: EmergencySession, call_sid
     except Exception as e:
         logger.error(f"Error in emergency response: {e}")
         return "I'm here to help you. Tell me what's wrong and where you are. Help is coming."
-    
-
-async def generate_elevenlabs_audio(text: str) -> str:
-    """Generate audio using ElevenLabs and return base64 encoded MP3"""
-    try:
-        if not ELEVENLABS_API_KEY:
-            logger.warning("ElevenLabs API key not configured, using Twilio default voice")
-            return None
-                
-        # Generate audio using ElevenLabs
-        audio = generate(
-            text=text,
-            voice=Voice(voice_id=ELEVENLABS_VOICE_ID),
-            model="eleven_monolingual_v1"  # or "eleven_multilingual_v2" for multi-language
-        )
-            
-        # Convert to base64 for Twilio
-        audio_base64 = base64.b64encode(audio).decode('utf-8')
-        return audio_base64
-            
-    except Exception as e:
-        logger.error(f"ElevenLabs audio generation failed: {e}")
-        return None
 
 def get_detail_response(emergency_type: str) -> str:
     """Get response based on emergency type"""
@@ -422,7 +390,7 @@ async def websocket_alerts(websocket: WebSocket):
 # Twilio voice endpoints
 @app.post("/voice", response_class=Response)
 async def handle_voice_call(request: Request):
-    """Handle incoming Twilio voice calls with ElevenLabs voice"""
+    """Handle incoming Twilio voice calls"""
     form_data = await request.form()
     call_sid = form_data.get("CallSid")
     caller_number = form_data.get("From")
@@ -433,18 +401,7 @@ async def handle_voice_call(request: Request):
     session.emergency_info.caller_contact = caller_number
     
     response = VoiceResponse()
-    
-    welcome_text = "Emergency helpline. What's your emergency?"
-    
-    # Try to use ElevenLabs voice
-    audio_base64 = await generate_elevenlabs_audio(welcome_text)
-    
-    if audio_base64:
-        # Use ElevenLabs generated audio
-        response.play(f"data:audio/mp3;base64,{audio_base64}")
-    else:
-        # Fallback to Twilio's default voice
-        response.say(welcome_text, voice="alice", language="en-US")
+    response.say("Emergency helpline. What's your emergency?", voice="alice", language="en-US")
     
     gather = Gather(
         input="speech",
@@ -457,37 +414,21 @@ async def handle_voice_call(request: Request):
     )
     response.append(gather)
     
-    # Fallback prompt
-    if audio_base64:
-        fallback_audio = await generate_elevenlabs_audio("Please tell me what's happening.")
-        if fallback_audio:
-            response.play(f"data:audio/mp3;base64,{fallback_audio}")
-        else:
-            response.say("Please tell me what's happening.", voice="alice", language="en-US")
-    else:
-        response.say("Please tell me what's happening.", voice="alice", language="en-US")
-    
+    response.say("Please tell me what's happening.")
     response.redirect("/voice")
     
     return Response(str(response), media_type="application/xml")
 
 @app.post("/process_speech", response_class=Response)
 async def process_speech_input(request: Request):
-    """Process speech input from Twilio with ElevenLabs voice response"""
+    """Process speech input from Twilio"""
     form_data = await request.form()
     call_sid = form_data.get("CallSid")
     speech_result = form_data.get("SpeechResult")
     
     if not call_sid or not speech_result:
         response = VoiceResponse()
-        error_text = "I couldn't hear you. Please speak clearly and tell me your emergency."
-        
-        error_audio = await generate_elevenlabs_audio(error_text)
-        if error_audio:
-            response.play(f"data:audio/mp3;base64,{error_audio}")
-        else:
-            response.say(error_text, voice="alice", language="en-US")
-            
+        response.say("I couldn't hear you. Please speak clearly and tell me your emergency.")
         response.redirect("/voice")
         return Response(str(response), media_type="application/xml")
     
@@ -509,14 +450,7 @@ async def process_speech_input(request: Request):
     })
     
     response = VoiceResponse()
-    
-    # Generate ElevenLabs audio for the response
-    response_audio = await generate_elevenlabs_audio(agent_response)
-    
-    if response_audio:
-        response.play(f"data:audio/mp3;base64,{response_audio}")
-    else:
-        response.say(agent_response, voice="alice", language="en-US")
+    response.say(agent_response, voice="alice", language="en-US")
     
     # Continue conversation unless ending phrases detected
     end_phrases = ["goodbye", "bye", "thank you", "that's all", "hang up"]
@@ -532,30 +466,17 @@ async def process_speech_input(request: Request):
         )
         response.append(gather)
         
-        # Contextual fallback message with ElevenLabs
+        # Contextual fallback message
         if session.stage == "details":
-            fallback_text = "Tell me more about what happened."
+            response.say("Tell me more about what happened.")
         elif session.stage == "location":
-            fallback_text = "What can you see around you? Any signs or gate numbers?"
+            response.say("What can you see around you? Any signs or gate numbers?")
         else:
-            fallback_text = "Anything else I need to know?"
-        
-        fallback_audio = await generate_elevenlabs_audio(fallback_text)
-        if fallback_audio:
-            response.play(f"data:audio/mp3;base64,{fallback_audio}")
-        else:
-            response.say(fallback_text, voice="alice", language="en-US")
+            response.say("Anything else I need to know?")
         
         response.redirect("/process_speech")
     else:
-        goodbye_text = "Stay safe. Help is coming."
-        goodbye_audio = await generate_elevenlabs_audio(goodbye_text)
-        
-        if goodbye_audio:
-            response.play(f"data:audio/mp3;base64,{goodbye_audio}")
-        else:
-            response.say(goodbye_text, voice="alice", language="en-US")
-            
+        response.say("Stay safe. Help is coming.")
         response.hangup()
     
     return Response(str(response), media_type="application/xml")
@@ -565,43 +486,6 @@ async def process_speech_input(request: Request):
 async def get_active_emergencies():
     """Get all active emergencies"""
     return list(state.active_emergencies.values())
-
-@app.get("/voice/config")
-async def get_voice_config():
-    """Get current voice configuration"""
-    return {
-        "elevenlabs_configured": bool(ELEVENLABS_API_KEY),
-        "voice_id": ELEVENLABS_VOICE_ID,
-        "fallback_voice": "alice (Twilio default)",
-        "model": "eleven_monolingual_v1"
-    }
-
-@app.post("/voice/test")
-async def test_voice_generation(text: str = Form(...)):
-    """Test ElevenLabs voice generation"""
-    if not ELEVENLABS_API_KEY:
-        raise HTTPException(status_code=400, detail="ElevenLabs API key not configured")
-    
-    try:
-        audio_base64 = await generate_elevenlabs_audio(text)
-        if audio_base64:
-            return {
-                "status": "success",
-                "text": text,
-                "audio_generated": True,
-                "audio_size_kb": len(audio_base64) // 1024,
-                "voice_id": ELEVENLABS_VOICE_ID
-            }
-        else:
-            return {
-                "status": "error",
-                "text": text,
-                "audio_generated": False,
-                "error": "Failed to generate audio"
-            }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Voice generation failed: {str(e)}")
-
 
 @app.get("/emergencies/{emergency_id}", response_model=EmergencyAlert)
 async def get_emergency(emergency_id: str):
@@ -859,7 +743,7 @@ async def test_conversation(user_input: str = Form(...)):
 
 @app.get("/status")
 async def get_system_status():
-    """Get system status including voice configuration"""
+    """Get system status"""
     return {
         "status": "operational",
         "service": "Kumbh Mela Emergency Voice Agent (FastAPI)",
@@ -870,19 +754,12 @@ async def get_system_status():
         "components": {
             "twilio": "configured" if TWILIO_ACCOUNT_SID else "not_configured",
             "groq_api": "configured" if GROQ_API_KEY else "not_configured",
-            "elevenlabs": "configured" if ELEVENLABS_API_KEY else "not_configured",
             "chromadb": "connected" if state.collection else "failed",
             "websockets": f"active ({len(state.websocket_connections)} clients)",
             "dashboard_webhook": "configured" if DASHBOARD_WEBHOOK_URL else "not_configured"
         },
-        "voice_config": {
-            "provider": "ElevenLabs" if ELEVENLABS_API_KEY else "Twilio Default",
-            "voice_id": ELEVENLABS_VOICE_ID if ELEVENLABS_API_KEY else "alice",
-            "fallback": "Twilio alice voice"
-        },
         "capabilities": [
             "Real-time voice emergency response",
-            "Custom AI voice generation (ElevenLabs)" if ELEVENLABS_API_KEY else "Standard voice synthesis",
             "Multi-language support (Hindi/English)",
             "Location-based emergency dispatch",
             "WebSocket real-time alerts",
@@ -890,6 +767,23 @@ async def get_system_status():
             "Volunteer coordination",
             "Priority-based response"
         ],
+        "emergency_types": [
+            "lost_child", "lost_adult", "medical", "fire", 
+            "crowd", "security", "water"
+        ],
+        "supported_locations": [
+            "Gates 1-20", "Red/Blue/Green/Yellow zones",
+            "Ramkund", "Triveni Sangam", "Kalaram Temple",
+            "Sectors A-P", "Medical posts", "Control rooms"
+        ],
+        "endpoints": {
+            "voice": "/voice (POST - Twilio webhook)",
+            "process_speech": "/process_speech (POST - Twilio webhook)",
+            "websocket_alerts": "/ws/alerts (WebSocket)",
+            "emergencies": "/emergencies (GET - Active emergencies)",
+            "test": "/test (GET - Test interface)",
+            "status": "/status (GET - This endpoint)"
+        },
         "timestamp": datetime.now().isoformat()
     }
 

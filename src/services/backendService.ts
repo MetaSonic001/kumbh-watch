@@ -160,7 +160,10 @@ class BackendService {
       };
     }
   }
-
+  async getCrowdFlowData(): Promise<CrowdFlowData[]> {
+    const response = await this.makeRequest(`${this.baseUrl}/crowd-flow-data`);
+    return response;
+  }
   // Test zones endpoint specifically
   async testZonesEndpoint(): Promise<{ status: string; message: string; details?: any }> {
     try {
@@ -244,13 +247,14 @@ class BackendService {
   }
 
   async sendEmergencyInstructions(instructions: string, priority: string = 'HIGH', duration: number = 300): Promise<void> {
-    await this.makeRequest(`${this.baseUrl}/instructions`, {
+    const params = new URLSearchParams({
+      instructions,
+      priority,
+      duration: duration.toString()
+    });
+  
+    await this.makeRequest(`${this.baseUrl}/instructions?${params.toString()}`, {
       method: 'POST',
-      body: JSON.stringify({
-        instructions,
-        priority,
-        duration
-      }),
     });
   }
 
@@ -302,7 +306,71 @@ class BackendService {
     
     return response;
   }
+
+  // Add this method to your BackendService class
+  calculateOptimalRoute(currentZone: CrowdFlowData, allZones: CrowdFlowData[]): ReRoutingSuggestion[] {
+    // Filter out current zone and find better alternatives
+    const candidateZones = allZones.filter(zone => 
+      zone.zone_id !== currentZone.zone_id &&
+      zone.density_level !== 'CRITICAL' &&
+      zone.occupancy_percentage < 90
+    );
+
+    // Sort by best conditions (lowest density and occupancy)
+    candidateZones.sort((a, b) => {
+      const densityWeight = { 'LOW': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4 };
+      const aDensity = densityWeight[a.density_level];
+      const bDensity = densityWeight[b.density_level];
+    
+      if (aDensity !== bDensity) return aDensity - bDensity;
+      return a.occupancy_percentage - b.occupancy_percentage;
+    });
+
+    // Generate suggestions for top 3 zones
+    return candidateZones.slice(0, 3).map(toZone => ({
+      from_zone: currentZone.zone_id,
+      to_zone: toZone.zone_id,
+      reason: this.generateReRoutingReason(currentZone, toZone),
+      urgency: this.calculateUrgency(currentZone, toZone),
+      estimated_wait_time: this.estimateWaitTime(toZone),
+      alternative_routes: candidateZones.slice(3, 5).map(zone => zone.zone_name),
+      crowd_conditions: {
+        from_zone: currentZone,
+        to_zone: toZone
+      }
+    }));
+  }
+
+  // Add these helper methods too
+  private generateReRoutingReason(fromZone: CrowdFlowData, toZone: CrowdFlowData): string {
+    if (fromZone.density_level === 'CRITICAL') {
+      return `Critical crowd density detected. Redirecting to ${toZone.zone_name} for safety.`;
+    }
+  
+    if (fromZone.occupancy_percentage > 80) {
+      return `High occupancy (${fromZone.occupancy_percentage}%). ${toZone.zone_name} has better capacity.`;
+    }
+  
+    return `Better crowd conditions at ${toZone.zone_name}. Estimated wait time: ${this.estimateWaitTime(toZone)} minutes.`;
+  }
+
+  private calculateUrgency(fromZone: CrowdFlowData, toZone: CrowdFlowData): 'low' | 'medium' | 'high' | 'critical' {
+    if (fromZone.density_level === 'CRITICAL' && toZone.density_level === 'LOW') return 'critical';
+    if (fromZone.density_level === 'HIGH' && toZone.density_level === 'LOW') return 'high';
+    if (fromZone.density_level === 'MEDIUM' && toZone.density_level === 'LOW') return 'medium';
+    return 'low';
+  }
+
+  private estimateWaitTime(zone: CrowdFlowData): number {
+    const baseWaitTime = 5;
+    const occupancyMultiplier = zone.occupancy_percentage / 100;
+    const densityMultiplier = { 'LOW': 1, 'MEDIUM': 1.5, 'HIGH': 2, 'CRITICAL': 3 }[zone.density_level];
+  
+    return Math.round(baseWaitTime * occupancyMultiplier * densityMultiplier);
+  }
 }
+
+
 
 export const backendService = new BackendService();
 export default backendService; 
