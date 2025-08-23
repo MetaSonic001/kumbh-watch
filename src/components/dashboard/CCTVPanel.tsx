@@ -1,30 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+  import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { 
-  Camera, 
-  Play, 
-  Pause, 
+  import { Badge } from "@/components/ui/badge";
+  import { 
+    Camera, 
+    Play,
+    Pause,
   Square, 
   Upload, 
-  Settings,
+    Settings,
   Wifi,
   WifiOff,
   Users,
   AlertTriangle,
   Activity,
-  RefreshCw
-} from "lucide-react";
+  RefreshCw,
+  MapPin,
+  Layers,
+  ZoomIn
+  } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
-import { API_URL, WS_URL } from "@/config";
+  import { toast } from "sonner";
+import { API_URL, WS_URL, MAPBOX_ACCESS_TOKEN } from "@/config";
+import ZoneSelectionModal from './ZoneSelectionModal';
 
 interface CameraStream {
   id: string;
-  name: string;
+    name: string;
   source: string;
   status: 'active' | 'stopped' | 'error';
   people_count: number;
@@ -33,6 +37,8 @@ interface CameraStream {
   last_frame?: string;
   last_update: string;
   is_live: boolean;
+  zone_id?: string;
+  zone_name?: string;
 }
 
 interface DetectionBox {
@@ -48,9 +54,9 @@ interface LiveFrame {
   people_count: number;
   density_level: string;
   timestamp: string;
-}
+  }
 
-const CCTVPanel = () => {
+  const CCTVPanel = () => {
   const [cameras, setCameras] = useState<CameraStream[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -66,12 +72,17 @@ const CCTVPanel = () => {
     camera_id: '',
     threshold: 20
   });
+  const [showZoneSelection, setShowZoneSelection] = useState(false);
+  const [pendingCameraData, setPendingCameraData] = useState<{
+    type: 'rtsp' | 'video';
+    data: any;
+  } | null>(null);
 
   const websocketsRef = useRef<{ [cameraId: string]: WebSocket }>({});
   const statusIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch camera status periodically
-  useEffect(() => {
+    useEffect(() => {
     const fetchCameraStatus = async () => {
       try {
         const response = await fetch(`${API_URL}/status`);
@@ -116,13 +127,13 @@ const CCTVPanel = () => {
     cameras.forEach(camera => {
       if (camera.status === 'active' && !websocketsRef.current[camera.id]) {
         connectToCamera(camera.id);
-      }
-    });
+        }
+      });
 
-    return () => {
+      return () => {
       // Cleanup WebSocket connections
       Object.values(websocketsRef.current).forEach(ws => ws.close());
-    };
+      };
   }, [cameras]);
 
   const connectToCamera = (cameraId: string) => {
@@ -169,57 +180,126 @@ const CCTVPanel = () => {
     };
   };
 
+  const handleZoneSelect = async (zoneId: string, zoneName: string) => {
+    if (!pendingCameraData) return;
+    
+    try {
+      setIsConnecting(true);
+      
+      if (pendingCameraData.type === 'rtsp') {
+        // Start RTSP monitoring with zone
+        const response = await fetch(`${API_URL}/monitor/rtsp?${new URLSearchParams({
+          camera_id: pendingCameraData.data.camera_id,
+          rtsp_url: pendingCameraData.data.rtsp_url,
+          threshold: pendingCameraData.data.threshold.toString(),
+          zone_id: zoneId
+        })}`, { method: 'POST' });
+
+        if (response.ok) {
+          const result = await response.json();
+          toast.success(`Started monitoring camera ${pendingCameraData.data.camera_id} in zone "${zoneName}"`);
+          
+          // Add the new camera to the local state
+          const newCamera: CameraStream = {
+            id: pendingCameraData.data.camera_id,
+            name: `Camera ${pendingCameraData.data.camera_id}`,
+            source: pendingCameraData.data.rtsp_url,
+            status: 'active',
+            people_count: 0,
+            threshold: pendingCameraData.data.threshold,
+            density_level: 'NONE',
+            last_update: new Date().toISOString(),
+            is_live: true,
+            zone_id: zoneId,
+            zone_name: zoneName
+          };
+          
+          setCameras(prev => [...prev, newCamera]);
+          
+          // Reset form
+          setShowRtspForm(false);
+          setRtspForm({ camera_id: '', rtsp_url: '', threshold: 20 });
+          
+          // Connect to the new camera's WebSocket
+          setTimeout(() => {
+            connectToCamera(pendingCameraData.data.camera_id);
+          }, 500);
+          
+        } else {
+          const error = await response.json();
+          toast.error(`Failed to start monitoring: ${error.detail}`);
+        }
+      } else {
+        // Process video with zone
+        const formData = new FormData();
+        formData.append('file', pendingCameraData.data.file);
+        
+        const response = await fetch(`${API_URL}/process/video?${new URLSearchParams({
+          camera_id: pendingCameraData.data.camera_id,
+          threshold: pendingCameraData.data.threshold.toString(),
+          zone_id: zoneId
+        })}`, { 
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          toast.success(`Started processing video for camera ${pendingCameraData.data.camera_id} in zone "${zoneName}"`);
+          
+          // Add the new camera to the local state
+          const newCamera: CameraStream = {
+            id: pendingCameraData.data.camera_id,
+            name: `Camera ${pendingCameraData.data.camera_id}`,
+            source: `video_file_${pendingCameraData.data.file.name}`,
+            status: 'active',
+            people_count: 0,
+            threshold: pendingCameraData.data.threshold,
+            density_level: 'NONE',
+            last_update: new Date().toISOString(),
+            is_live: true,
+            zone_id: zoneId,
+            zone_name: zoneName
+          };
+          
+          setCameras(prev => [...prev, newCamera]);
+          
+          // Reset form
+          setShowVideoUpload(false);
+          setVideoFile(null);
+          setVideoForm({ camera_id: '', threshold: 20 });
+          
+          // Connect to the new camera's WebSocket
+          setTimeout(() => {
+            connectToCamera(pendingCameraData.data.camera_id);
+          }, 500);
+          
+        } else {
+          const error = await response.json();
+          toast.error(`Failed to process video: ${error.detail}`);
+        }
+      }
+      
+    } catch (error) {
+      toast.error('Failed to process request');
+    } finally {
+      setIsConnecting(false);
+      setPendingCameraData(null);
+    }
+  };
+
   const startRTSPMonitoring = async () => {
     if (!rtspForm.camera_id || !rtspForm.rtsp_url) {
       toast.error('Please fill in all fields');
       return;
     }
 
-    setIsConnecting(true);
-    try {
-      const response = await fetch(`${API_URL}/monitor/rtsp?${new URLSearchParams({
-        camera_id: rtspForm.camera_id,
-        rtsp_url: rtspForm.rtsp_url,
-        threshold: rtspForm.threshold.toString()
-      })}`, { method: 'POST' });
-
-      if (response.ok) {
-        const result = await response.json();
-        toast.success(`Started monitoring camera ${rtspForm.camera_id}`);
-        
-        // Add the new camera to the local state immediately
-        const newCamera: CameraStream = {
-          id: rtspForm.camera_id,
-          name: `Camera ${rtspForm.camera_id}`,
-          source: rtspForm.rtsp_url,
-          status: 'active',
-          people_count: 0,
-          threshold: rtspForm.threshold,
-          density_level: 'NONE',
-          last_update: new Date().toISOString(),
-          is_live: true
-        };
-        
-        setCameras(prev => [...prev, newCamera]);
-        
-        // Reset form
-        setShowRtspForm(false);
-        setRtspForm({ camera_id: '', rtsp_url: '', threshold: 20 });
-        
-        // Connect to the new camera's WebSocket
-        setTimeout(() => {
-          connectToCamera(rtspForm.camera_id);
-        }, 500);
-        
-      } else {
-        const error = await response.json();
-        toast.error(`Failed to start monitoring: ${error.detail}`);
-      }
-    } catch (error) {
-      toast.error('Failed to connect to backend');
-    } finally {
-      setIsConnecting(false);
-    }
+    // Show zone selection instead of directly starting
+    setPendingCameraData({
+      type: 'rtsp',
+      data: { ...rtspForm }
+    });
+    setShowZoneSelection(true);
   };
 
   const uploadVideo = async () => {
@@ -228,57 +308,12 @@ const CCTVPanel = () => {
       return;
     }
 
-    setIsConnecting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', videoFile);
-      
-      const response = await fetch(`${API_URL}/process/video?${new URLSearchParams({
-        camera_id: videoForm.camera_id,
-        threshold: videoForm.threshold.toString()
-      })}`, { 
-        method: 'POST',
-        body: formData
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        toast.success(`Started processing video for camera ${videoForm.camera_id}`);
-        
-        // Add the new camera to the local state immediately
-        const newCamera: CameraStream = {
-          id: videoForm.camera_id,
-          name: `Camera ${videoForm.camera_id}`,
-          source: `video_file_${videoFile.name}`,
-          status: 'active',
-          people_count: 0,
-          threshold: videoForm.threshold,
-          density_level: 'NONE',
-          last_update: new Date().toISOString(),
-          is_live: true
-        };
-        
-        setCameras(prev => [...prev, newCamera]);
-        
-        // Reset form
-        setShowVideoUpload(false);
-        setVideoFile(null);
-        setVideoForm({ camera_id: '', threshold: 20 });
-        
-        // Connect to the new camera's WebSocket
-        setTimeout(() => {
-          connectToCamera(videoForm.camera_id);
-        }, 500);
-        
-      } else {
-        const error = await response.json();
-        toast.error(`Failed to process video: ${error.detail}`);
-      }
-    } catch (error) {
-      toast.error('Failed to upload video');
-    } finally {
-      setIsConnecting(false);
-    }
+    // Show zone selection instead of directly uploading
+    setPendingCameraData({
+      type: 'video',
+      data: { ...videoForm, file: videoFile }
+    });
+    setShowZoneSelection(true);
   };
 
   const stopCamera = async (cameraId: string) => {
@@ -326,7 +361,7 @@ const CCTVPanel = () => {
     }
   };
 
-  return (
+      return (
     <div className="space-y-6">
       {/* Camera Controls */}
       <div className="flex items-center justify-between">
@@ -377,7 +412,7 @@ const CCTVPanel = () => {
                       value={rtspForm.camera_id}
                       onChange={(e) => setRtspForm(prev => ({ ...prev, camera_id: e.target.value }))}
                     />
-                  </div>
+                        </div>
                   <div>
                     <Label htmlFor="rtsp-url">RTSP URL</Label>
                     <Input
@@ -386,7 +421,7 @@ const CCTVPanel = () => {
                       value={rtspForm.rtsp_url}
                       onChange={(e) => setRtspForm(prev => ({ ...prev, rtsp_url: e.target.value }))}
                     />
-                  </div>
+                      </div>
                   <div>
                     <Label htmlFor="rtsp-threshold">Threshold</Label>
                     <Input
@@ -396,8 +431,8 @@ const CCTVPanel = () => {
                       value={rtspForm.threshold}
                       onChange={(e) => setRtspForm(prev => ({ ...prev, threshold: parseInt(e.target.value) || 20 }))}
                     />
-                  </div>
-                </div>
+                      </div>
+                      </div>
                 <div className="flex gap-2">
                   <Button 
                     onClick={startRTSPMonitoring}
@@ -410,14 +445,14 @@ const CCTVPanel = () => {
                       <Play className="w-4 h-4 mr-2" />
                     )}
                     {isConnecting ? 'Starting...' : 'Start Monitoring'}
-                  </Button>
-                  <Button 
+                          </Button>
+                          <Button 
                     variant="outline"
                     onClick={() => setShowRtspForm(false)}
-                  >
+                          >
                     Cancel
-                  </Button>
-                </div>
+                          </Button>
+                        </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -447,7 +482,7 @@ const CCTVPanel = () => {
                       value={videoForm.camera_id}
                       onChange={(e) => setVideoForm(prev => ({ ...prev, camera_id: e.target.value }))}
                     />
-                  </div>
+                      </div>
                   <div>
                     <Label htmlFor="video-threshold">Threshold</Label>
                     <Input
@@ -457,8 +492,8 @@ const CCTVPanel = () => {
                       value={videoForm.threshold}
                       onChange={(e) => setVideoForm(prev => ({ ...prev, threshold: parseInt(e.target.value) || 20 }))}
                     />
-                  </div>
-                </div>
+                      </div>
+                    </div>
                 <div>
                   <Label htmlFor="video-file">Video File</Label>
                   <Input
@@ -553,19 +588,31 @@ const CCTVPanel = () => {
                     </span>
                   </div>
                   
+                  {camera.zone_name && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Zone:</span>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span className="font-medium text-primary">{camera.zone_name}</span>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">People Count:</span>
                     <div className="flex items-center gap-1">
                       <Users className="w-4 h-4" />
-                      <span className="font-bold">{camera.people_count}</span>
+                      <span className={`font-bold ${getDensityColor(camera.density_level)}`}>
+                        {camera.people_count}
+                      </span>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Threshold:</span>
                     <span className="font-bold">{camera.threshold}</span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Density:</span>
                     <Badge 
@@ -576,12 +623,48 @@ const CCTVPanel = () => {
                     </Badge>
                   </div>
                   
+                  {/* Density Indicator Bar */}
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        camera.density_level === 'CRITICAL' ? 'bg-red-500' :
+                        camera.density_level === 'HIGH' ? 'bg-orange-500' :
+                        camera.density_level === 'MEDIUM' ? 'bg-purple-500' :
+                        camera.density_level === 'LOW' ? 'bg-green-500' : 'bg-gray-500'
+                      }`}
+                      style={{ 
+                        width: `${Math.min((camera.people_count / camera.threshold) * 100, 100)}%` 
+                      }}
+                    ></div>
+                  </div>
+                  
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Last Update:</span>
                     <span className="text-xs">
                       {new Date(camera.last_update).toLocaleTimeString()}
                     </span>
                   </div>
+                  
+                  {/* Zone Status Indicator */}
+                  {camera.zone_id && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Zone Status:</span>
+                      <div className="flex items-center gap-1">
+                        <div className={`w-2 h-2 rounded-full ${
+                          camera.density_level === 'CRITICAL' ? 'bg-red-500 animate-pulse' :
+                          camera.density_level === 'HIGH' ? 'bg-orange-500' :
+                          camera.density_level === 'MEDIUM' ? 'bg-purple-500' :
+                          camera.density_level === 'LOW' ? 'bg-green-500' : 'bg-gray-500'
+                        }`}></div>
+                        <span className="text-xs font-medium">
+                          {camera.density_level === 'CRITICAL' ? 'Critical' :
+                           camera.density_level === 'HIGH' ? 'High' :
+                           camera.density_level === 'MEDIUM' ? 'Medium' :
+                           camera.density_level === 'LOW' ? 'Low' : 'None'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Camera Controls */}
@@ -643,17 +726,28 @@ const CCTVPanel = () => {
             >
               <Wifi className="w-4 h-4 mr-2" />
               Add RTSP Camera
-            </Button>
+          </Button>
             <Button
               onClick={() => setShowVideoUpload(true)}
               variant="outline"
             >
               <Upload className="w-4 h-4 mr-2" />
               Upload Video
-            </Button>
-          </div>
+          </Button>
+        </div>
         </motion.div>
       )}
+
+      {/* Zone Selection Modal */}
+      <ZoneSelectionModal
+        isOpen={showZoneSelection}
+        onClose={() => {
+          setShowZoneSelection(false);
+          setPendingCameraData(null);
+        }}
+        onZoneSelect={handleZoneSelect}
+        cameraType={pendingCameraData?.type || 'rtsp'}
+      />
     </div>
   );
 };

@@ -25,7 +25,6 @@ import { useNavigate } from "react-router-dom";
 import { useSetup } from "@/contexts/SetupContext";
 import SetupLayout from "@/components/setup/SetupLayout";
 import MapboxZoneSelector from "@/components/map/MapboxZoneSelector";
-import ReRoutingSuggestions from "@/components/setup/ReRoutingSuggestions";
 import { toast } from "sonner";
 import { backendService, BackendZone } from "@/services/backendService";
 
@@ -302,11 +301,8 @@ const ZoneSetup = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ReRoutingSuggestions
-                currentZoneId={selectedZone}
-                onZoneSelect={handleZoneSelect}
-                showAllSuggestions={true}
-              />
+              {/* ReRoutingSuggestions component was removed */}
+              <p>Smart re-routing suggestions are now available on the dashboard.</p>
             </CardContent>
           </Card>
         </TabsContent>
