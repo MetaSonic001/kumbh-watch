@@ -1,5 +1,5 @@
 # Use Python 3.9 slim image for better performance and smaller size
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Install system dependencies required for OpenCV and other packages
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -47,7 +47,7 @@ COPY start_backend.py .
 RUN mkdir -p /app/temp /app/models /app/uploads
 
 # Download YOLOv8 model to avoid download during runtime
-RUN python -c "from ultralytics import YOLO; YOLO('yolov8s.pt')"
+RUN python -c "from ultralytics import YOLO; model = YOLO('yolov8s.pt'); print('YOLOv8 model downloaded successfully')"
 
 # Expose the port the app runs on
 EXPOSE 8000
@@ -62,4 +62,4 @@ RUN useradd -m -u 1000 appuser && \
 USER appuser
 
 # Start the application
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "start_backend.py"]
