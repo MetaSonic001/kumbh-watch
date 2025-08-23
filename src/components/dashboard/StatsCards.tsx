@@ -263,49 +263,6 @@ const StatsCards = () => {
         ))}
       </div>
 
-      {/* Detail Stats */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.4 }}
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Activity className="w-5 h-5 text-accent" />
-              System Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <Badge variant="outline" className="mb-2">
-                  {stats.anomalyCount}
-                </Badge>
-                <p className="text-xs text-muted-foreground">Anomalies Detected</p>
-              </div>
-              <div className="text-center">
-                <Badge variant="destructive" className="mb-2">
-                  {stats.emergencyCount}
-                </Badge>
-                <p className="text-xs text-muted-foreground">Emergency Alerts</p>
-              </div>
-              <div className="text-center">
-                <Badge variant="secondary" className="mb-2">
-                  {stats.thresholdBreaches}
-                </Badge>
-                <p className="text-xs text-muted-foreground">Threshold Breaches</p>
-              </div>
-              <div className="text-center">
-                <Badge variant="secondary" className="mb-2">
-                  {Object.keys(cameraData).length}
-                </Badge>
-                <p className="text-xs text-muted-foreground">Active Cameras</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
     </div>
   );
 };
