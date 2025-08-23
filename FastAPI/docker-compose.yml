@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  crowd-detection-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crowd-detection-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=production
+    volumes:
+      # Mount volumes for persistent data
+      - ./uploads:/app/uploads
+      - ./models:/app/models
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - crowd-detection-network
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+networks:
+  crowd-detection-network:
+    driver: bridge
+
+volumes:
+  crowd-detection-uploads:
+  crowd-detection-models:
+  crowd-detection-logs:
